@@ -13,7 +13,8 @@ class FloorplanGenerator:
     def generate(self, 
                perimeter: Tuple[float, float] = (100, 100),
                num_rooms: int = 5,
-               min_room_size: float = 10.0) -> Tuple[jax.Array, list, Tuple[float, float]]:
+               min_room_size: float = 10.0,
+               entry_point: Tuple[float, float] = (5, 5)) -> Tuple[jax.Array, list, Tuple[float, float]]:
         """
         Generate connected rooms within given perimeter dimensions
         Returns array of walls in format [x1, y1, x2, y2] and entry point
@@ -40,9 +41,6 @@ class FloorplanGenerator:
         
         # Collect all walls except doorways
         all_walls = outer_walls + [wall for room in rooms for wall in room.walls]
-        
-        # Define entry point (e.g., bottom-left corner)
-        entry_point = (5, 5)
         
         return jnp.array(all_walls, dtype=jnp.float32), rooms, entry_point
 
