@@ -3,6 +3,8 @@ import jax.numpy as jnp
 from typing import Tuple
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+import numpy as np
+import argparse
 
 class FloorplanGenerator:
     def __init__(self, rng_key=jax.random.PRNGKey(0)):
@@ -11,10 +13,10 @@ class FloorplanGenerator:
     def generate(self, 
                perimeter: Tuple[float, float] = (100, 100),
                num_rooms: int = 5,
-               min_room_size: float = 10.0) -> jnp.Array:
+               min_room_size: float = 10.0) -> Tuple[jax.Array, list, Tuple[float, float]]:
         """
         Generate connected rooms within given perimeter dimensions
-        Returns array of walls in format [x1, y1, x2, y2]
+        Returns array of walls in format [x1, y1, x2, y2] and entry point
         """
         self.key, subkey = jax.random.split(self.key)
         walls = []
@@ -38,7 +40,11 @@ class FloorplanGenerator:
         
         # Collect all walls except doorways
         all_walls = outer_walls + [wall for room in rooms for wall in room.walls]
-        return jnp.array(all_walls, dtype=jnp.float32)
+        
+        # Define entry point (e.g., bottom-left corner)
+        entry_point = (5, 5)
+        
+        return jnp.array(all_walls, dtype=jnp.float32), rooms, entry_point
 
     class Room:
         def __init__(self, bounds, doorways=None):
@@ -137,8 +143,8 @@ class FloorplanGenerator:
             return [self.Room(bounds)]
 
     @staticmethod
-    def plot_walls(walls, ax=None):
-        """Visualise the floorplan walls"""
+    def plot_walls(walls, rooms, entry_point, ax=None):
+        """Visualise the floorplan walls, doorways, and entry point"""
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 10))
         
@@ -151,6 +157,20 @@ class FloorplanGenerator:
         lc = LineCollection(segments, color='black', linewidths=1)
         ax.add_collection(lc)
         
+        # Plot doorways
+        for room in rooms:
+            for doorway in room.doorways:
+                pos = doorway['position']
+                ax.plot(pos[0], pos[1], 'go')  # Green dot for doorway
+        
+        # Fill rooms with different colors
+        for i, room in enumerate(rooms):
+            x1, y1, x2, y2 = room.bounds
+            ax.add_patch(plt.Rectangle((x1, y1), x2-x1, y2-y1, fill=True, color=np.random.rand(3,), alpha=0.2))
+        
+        # Plot entry point
+        ax.plot(entry_point[0], entry_point[1], 'ro', markersize=10)  # Red dot for entry
+        
         ax.autoscale()
         ax.set_aspect('equal')
         ax.set_xlabel('X')
@@ -159,30 +179,39 @@ class FloorplanGenerator:
         return ax
 
     @staticmethod
-    def visualise(walls, ax=None):
-        """Visualise the floorplan walls"""
-        return FloorplanGenerator.plot_walls(walls, ax)
+    def visualise(walls, rooms, entry_point, ax=None):
+        """Visualise the floorplan walls, doorways, and entry point"""
+        return FloorplanGenerator.plot_walls(walls, rooms, entry_point, ax)
 
 def image_to_floorplan(image_path):
     # Placeholder for CNN-based segmentation
     return {
-        'walls': [[0,0,100,0], ...],
-        'doorways': [...],
-        'rooms': [...]
+        'walls': [[0,0,100,0], [100,0,100,100]],  # Example walls
+        'doorways': [],
+        'rooms': []
     }
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     
+    # Argument parser for seed selection
+    parser = argparse.ArgumentParser(description="Generate a random floorplan.")
+    parser.add_argument('--seed', type=int, help="Seed for random number generation")
+    args = parser.parse_args()
+    
+    # Use provided seed or random seed
+    seed = args.seed if args.seed is not None else np.random.randint(0, 10000)
+    rng_key = jax.random.PRNGKey(seed)
+    
     # Create generator and generate sample floorplan
-    generator = FloorplanGenerator()
-    walls = generator.generate(
+    generator = FloorplanGenerator(rng_key)
+    walls, rooms, entry_point = generator.generate(
         perimeter=(100, 80),
         num_rooms=7,
         min_room_size=8
     )
     
     # Plot and display
-    generator.visualise(walls)
+    generator.visualise(walls, rooms, entry_point)
     plt.show()
 
