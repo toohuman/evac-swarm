@@ -107,3 +107,36 @@ def generate_building_layout(width, height, min_room_size=20, wall_thickness=1):
     
     partition(0, 0, width, height)
     return walls 
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+
+    # Set parameters for the building layout
+    width = 100
+    height = 100
+    min_room_size = 20
+    wall_thickness = 1
+
+    # Generate the building layout
+    layout = generate_building_layout(width, height, min_room_size, wall_thickness)
+
+    # Set up the plot
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.set_aspect('equal')
+
+    # Draw each wall as a rectangle
+    for wall in layout:
+        # The wall is defined with its centre at (wall['x'], wall['y'])
+        # and has dimensions wall['width'] and wall['height'].
+        lower_left = (wall['x'] - wall['width'] / 2, wall['y'] - wall['height'] / 2)
+        rect = patches.Rectangle(lower_left, wall['width'], wall['height'],
+                                 edgecolor='black', facecolor='gray')
+        ax.add_patch(rect)
+
+    plt.title("Generated Building Layout")
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.show() 
