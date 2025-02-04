@@ -1,4 +1,4 @@
-from model import BuildingModel
+from .model import BuildingModel
 
 if __name__ == "__main__":
     # Create the model with default parameters.

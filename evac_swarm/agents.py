@@ -1,6 +1,6 @@
 import math
 import random
-from mesa import Agent
+from evac_swarm import Agent
 
 # A small helper function for distance calculation
 def euclidean_distance(a, b):

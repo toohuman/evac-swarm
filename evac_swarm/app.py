@@ -1,5 +1,5 @@
-from mesa.visualization.ModularServer import ModularServer
-from mesa.visualization.modules import CanvasGrid
+from evac_swarm.visualization.ModularServer import ModularServer
+from evac_swarm.visualization.modules import CanvasGrid
 from model import BuildingModel
 
 def portray_agent(agent):

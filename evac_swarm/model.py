@@ -1,7 +1,7 @@
 import random
-from mesa import Model
-from mesa.space import ContinuousSpace
-from mesa.time import RandomActivation
+from evac_swarm import Model
+from evac_swarm.space import ContinuousSpace
+from evac_swarm.time import RandomActivation
 
 from agents import RobotAgent, WallAgent, CasualtyAgent
 from building_generator import generate_building_layout
