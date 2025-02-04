@@ -13,8 +13,7 @@ class FloorplanGenerator:
     def generate(self, 
                perimeter: Tuple[float, float] = (100, 100),
                num_rooms: int = 5,
-               min_room_size: float = 10.0,
-               entry_point: Tuple[float, float] = (5, 5)) -> Tuple[jax.Array, list, Tuple[float, float]]:
+               min_room_size: float = 10.0) -> Tuple[jax.Array, list, Tuple[float, float]]:
         """
         Generate connected rooms within given perimeter dimensions
         Returns array of walls in format [x1, y1, x2, y2] and entry point
@@ -36,11 +35,20 @@ class FloorplanGenerator:
             bounds=(0, 0, perimeter[0], perimeter[1]),
             depth=0,
             max_rooms=num_rooms,
-            min_size=min_room_size
+            min_size=min_room_size,
+            current_rooms=[]
         )
         
         # Collect all walls except doorways
         all_walls = outer_walls + [wall for room in rooms for wall in room.walls]
+        
+        # Randomly select an outer wall and place the entry point
+        wall_idx = jax.random.randint(subkey, (), 0, len(outer_walls))
+        wall = outer_walls[wall_idx]
+        if wall[0] == wall[2]:  # Vertical wall
+            entry_point = (wall[0], (wall[1] + wall[3]) / 2)
+        else:  # Horizontal wall
+            entry_point = ((wall[0] + wall[2]) / 2, wall[1])
         
         return jnp.array(all_walls, dtype=jnp.float32), rooms, entry_point
 
@@ -64,39 +72,48 @@ class FloorplanGenerator:
                 if not any(dw['wall_idx'] == i for dw in self.doorways):
                     self.walls.append(wall)
 
-    def _recursive_division(self, key, bounds, depth, max_rooms, min_size):
-        current_key, split_key = jax.random.split(key)
+    def _recursive_division(self, key, bounds, depth, max_rooms, min_size, current_rooms):
         x1, y1, x2, y2 = bounds
         width = x2 - x1
         height = y2 - y1
 
+        # Base case: use the entire space for a single room
+        if len(current_rooms) == 0 and max_rooms == 1:
+            current_rooms.append(self.Room(bounds))
+            return current_rooms
+
         # Base case: room is too small or reached max rooms
-        if (width < min_size*2 and height < min_size*2) or depth >= max_rooms:
-            return [self.Room(bounds)]
-            
+        if (width < min_size*2 and height < min_size*2) or len(current_rooms) >= max_rooms:
+            current_rooms.append(self.Room(bounds))
+            return current_rooms
+
+        current_key, split_key = jax.random.split(key)
+
         # Randomly choose split direction (0=horizontal, 1=vertical)
         split_dir = jax.random.randint(split_key, (), 0, 2)
-        
+
         if split_dir == 0 and width >= 2*min_size:  # Vertical split
-            split_pos = x1 + min_size + jax.random.uniform(current_key) * (width - 2*min_size)
+            split_pos = x1 + width / 2 + jax.random.uniform(current_key) * (width / 4)
             doorway_pos = y1 + jax.random.uniform(current_key) * (height - min_size/2)
-            
+
             left_rooms = self._recursive_division(
                 jax.random.split(key)[0],
                 (x1, y1, split_pos, y2),
                 depth+1,
                 max_rooms,
-                min_size
+                min_size,
+                current_rooms
             )
-            
+
             right_rooms = self._recursive_division(
                 jax.random.split(key)[1],
                 (split_pos, y1, x2, y2),
                 depth+1,
                 max_rooms,
-                min_size
+                min_size,
+                current_rooms
             )
-            
+
             # Add doorway between the two sections
             doorway = {
                 'wall_idx': 1,  # Right wall of left section
@@ -104,29 +121,31 @@ class FloorplanGenerator:
                 'size': min_size/2
             }
             left_rooms[-1].doorways.append(doorway)
-            
+
             return left_rooms + right_rooms
-            
+
         elif split_dir == 1 and height >= 2*min_size:  # Horizontal split
-            split_pos = y1 + min_size + jax.random.uniform(current_key) * (height - 2*min_size)
+            split_pos = y1 + height / 2 + jax.random.uniform(current_key) * (height / 4)
             doorway_pos = x1 + jax.random.uniform(current_key) * (width - min_size/2)
-            
+
             bottom_rooms = self._recursive_division(
                 jax.random.split(key)[0],
                 (x1, y1, x2, split_pos),
                 depth+1,
                 max_rooms,
-                min_size
+                min_size,
+                current_rooms
             )
-            
+
             top_rooms = self._recursive_division(
                 jax.random.split(key)[1],
                 (x1, split_pos, x2, y2),
                 depth+1,
                 max_rooms,
-                min_size
+                min_size,
+                current_rooms
             )
-            
+
             # Add doorway between the two sections
             doorway = {
                 'wall_idx': 2,  # Top wall of bottom section
@@ -134,11 +153,12 @@ class FloorplanGenerator:
                 'size': min_size/2
             }
             bottom_rooms[-1].doorways.append(doorway)
-            
+
             return bottom_rooms + top_rooms
-        
+
         else:  # Can't split further
-            return [self.Room(bounds)]
+            current_rooms.append(self.Room(bounds))
+            return current_rooms
 
     @staticmethod
     def plot_walls(walls, rooms, entry_point, ax=None):
