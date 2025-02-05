@@ -56,24 +56,24 @@ def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3)
             
         if orientation == "vertical":
             split_x = random.uniform(x + min_room_size, x + w - min_room_size)
-            door_y = random.uniform(y + h * 0.3, y + h * 0.7)
+            door_y = random.uniform(y + h * 0.4, y + h * 0.6)  # Centralize door
             
-            # Ensure segments overlap at the door
-            segment_height = door_y - y - door_width
+            # Ensure segments align at the door
+            segment_height = door_y - y - door_width / 2
             if segment_height > 0:
                 walls.append({
                     "x": split_x,
                     "y": y + segment_height / 2,
                     "width": wall_thickness,
-                    "height": segment_height
+                    "height": segment_height + wall_thickness / 2  # Extend to meet other walls
                 })
-            segment_height = (y + h) - door_y - door_width
+            segment_height = (y + h) - door_y - door_width / 2
             if segment_height > 0:
                 walls.append({
                     "x": split_x,
-                    "y": door_y + door_width + segment_height / 2,
+                    "y": door_y + door_width / 2 + segment_height / 2,
                     "width": wall_thickness,
-                    "height": segment_height
+                    "height": segment_height + wall_thickness / 2  # Extend to meet other walls
                 })
             
             partition(x, y, split_x - x, h)
@@ -81,23 +81,23 @@ def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3)
         
         else:
             split_y = random.uniform(y + min_room_size, y + h - min_room_size)
-            door_x = random.uniform(x + w * 0.3, x + w * 0.7)
+            door_x = random.uniform(x + w * 0.4, x + w * 0.6)  # Centralize door
             
-            # Ensure segments overlap at the door
-            segment_width = door_x - x - door_width
+            # Ensure segments align at the door
+            segment_width = door_x - x - door_width / 2
             if segment_width > 0:
                 walls.append({
                     "x": x + segment_width / 2,
                     "y": split_y,
-                    "width": segment_width,
+                    "width": segment_width + wall_thickness / 2,  # Extend to meet other walls
                     "height": wall_thickness
                 })
-            segment_width = (x + w) - door_x - door_width
+            segment_width = (x + w) - door_x - door_width / 2
             if segment_width > 0:
                 walls.append({
-                    "x": door_x + door_width + segment_width / 2,
+                    "x": door_x + door_width / 2 + segment_width / 2,
                     "y": split_y,
-                    "width": segment_width,
+                    "width": segment_width + wall_thickness / 2,  # Extend to meet other walls
                     "height": wall_thickness
                 })
             
