@@ -1,6 +1,6 @@
 import math
 import random
-from evac_swarm import Agent
+from mesa import Agent
 
 # A small helper function for distance calculation
 def euclidean_distance(a, b):
@@ -11,8 +11,8 @@ class RobotAgent(Agent):
     A robot agent that can move in 360° directions, avoid collisions and detect casualties.
     """
     def __init__(self, unique_id, model, pos, vision_range, radius=1):
-        super().__init__(unique_id, model)
-        self.pos = pos
+        Agent.__init__(self, model)
+        self.unique_id = unique_id
         self.orientation = random.uniform(0, 360)  # In degrees
         self.vision_range = vision_range
         self.radius = radius
@@ -46,7 +46,7 @@ class RobotAgent(Agent):
     def detect_collision(self, new_pos):
         """Check collisions with wall agents and other robot agents."""
         # Check for wall collisions
-        for agent in self.model.schedule.agents:
+        for agent in self.model.agents:
             if type(agent).__name__ == "WallAgent":
                 if self._collides_with_wall(new_pos, agent):
                     return True
@@ -75,7 +75,7 @@ class RobotAgent(Agent):
 
     def detect_casualties(self):
         """Detect casualty agents within vision range and update the report."""
-        for agent in self.model.schedule.agents:
+        for agent in self.model.agents:
             if type(agent).__name__ == "CasualtyAgent":
                 if euclidean_distance(self.pos, agent.pos) <= self.vision_range:
                     # Report casualty by adding its position
@@ -87,7 +87,8 @@ class WallAgent(Agent):
     A wall agent representing an impassable structure.
     """
     def __init__(self, unique_id, model, wall_spec):
-        super().__init__(unique_id, model)
+        Agent.__init__(self, model)
+        self.unique_id = unique_id
         self.wall_spec = wall_spec  # a dict with x, y, width, height
         
     def step(self):
@@ -100,8 +101,8 @@ class CasualtyAgent(Agent):
     A casualty agent. Static until detected.
     """
     def __init__(self, unique_id, model, pos):
-        super().__init__(unique_id, model)
-        self.pos = pos
+        Agent.__init__(self, model)
+        self.unique_id = unique_id
         self.discovered = False
     
     def step(self):
