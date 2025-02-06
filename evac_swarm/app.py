@@ -1,74 +1,93 @@
+from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent
+from evac_swarm.model import SwarmExplorerModel
 from mesa.visualization import SolaraViz, Slider
 from mesa.visualization.components import make_space_component, make_plot_component
 import solara
-
-from evac_swarm.model import SwarmExplorerModel
+import numpy as np
+import matplotlib.patches as patches
 
 def agent_portrayal(agent):
     """Define how to portray each type of agent"""
-    portrayal = {}
+    if agent is None:
+        return {}
     
-    if agent.__class__.__name__ == "RobotAgent":
-        portrayal = {
-            "shape": "circle",
+    if isinstance(agent, RobotAgent):
+        return {
             "color": "blue",
-            "filled": True,
-            "layer": 1,
-            "radius": 0.5,
+            "marker": "o",  # Circle marker
+            "size": 50     # Size in points
         }
         
-    elif agent.__class__.__name__ == "WallAgent":
-        portrayal = {
-            "shape": "rect",
+    elif isinstance(agent, WallAgent):
+        return {
             "color": "grey",
-            "filled": True,
-            "layer": 0,
-            "width": agent.wall_spec["width"],
-            "height": agent.wall_spec["height"]
+            "marker": "s",  # Square marker
+            "size": agent.wall_spec["width"] * 100  # Scale up the size
         }
         
-    elif agent.__class__.__name__ == "CasualtyAgent":
-        portrayal = {
-            "shape": "circle",
+    elif isinstance(agent, CasualtyAgent):
+        return {
             "color": "red" if not agent.discovered else "green",
-            "filled": True,
-            "layer": 1,
-            "radius": 0.3,
+            "marker": "o",
+            "size": 30
         }
-        
-    return portrayal
+
+@solara.component
+def post_process_space(ax, model):
+    """Post-process the space visualization to add walls."""
+    # Draw walls as rectangles
+    for wall_spec in model.space.wall_specs:
+        x = wall_spec['x'] - wall_spec['width'] / 2
+        y = wall_spec['y'] - wall_spec['height'] / 2
+        rect = patches.Rectangle(
+            (x, y),
+            wall_spec['width'],
+            wall_spec['height'],
+            facecolor='grey',
+            edgecolor='black',
+            alpha=0.8
+        )
+        ax.add_patch(rect)
+    
+    ax.set_aspect('equal')
+    ax.set_xticks([])
+    ax.set_yticks([])
 
 # Model parameters with explicit value extraction
 model_params = {
-    "width": 100,
-    "height": 100,
-    "robot_count": Slider("Robots", 20, 1, 50).value,
-    "casualty_count": Slider("Casualties", 5, 1, 20).value,
-    "min_room_size": 20,
-    "wall_thickness": 1,
-    "vision_range": Slider("Vision Range", 15, 5, 30).value
+    "width": 15,  # Match building generator scale
+    "height": 15,
+    "robot_count": Slider("Robots", 5, 1, 20).value,
+    "casualty_count": Slider("Casualties", 3, 1, 10).value,
+    "min_room_size": 3,
+    "wall_thickness": 0.3,
+    "vision_range": Slider("Vision Range", 3, 1, 10).value
 }
 
-# Create space component with explicit model reference
-space = make_space_component(
-    agent_portrayal,
-    space_name="space",
-    canvas_width=500,
-    canvas_height=500,
-    grid_width=100,
-    grid_height=100
-)
+# Create space component with model reference
+def make_space_with_walls(model):
+    return make_space_component(
+        agent_portrayal,
+        post_process=lambda ax: post_process_space(ax, model),
+        space_name="space",
+        canvas_width=600,
+        canvas_height=600,
+        grid_width=15,
+        grid_height=15,
+        draw_grid=False
+    )
 
-# Create chart component with matplotlib backend
+# Model
+model = SwarmExplorerModel()
+
+# Create components with model reference
+space = make_space_with_walls(model)
 coverage_chart = make_plot_component(
     "Coverage",
     backend="matplotlib"
 )
 
-# Model
-model = SwarmExplorerModel()
-
-# Create the Solara-based visualisation with explicit instantiation
+# Create the Solara-based visualisation
 Page = SolaraViz(
     model=model,
     components=[space, coverage_chart],

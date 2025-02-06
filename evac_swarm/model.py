@@ -1,10 +1,13 @@
 import random
+import numpy as np
 from mesa import Model
 from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
+from mesa.experimental.cell_space import PropertyLayer
 
 from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent
 from evac_swarm.building_generator import generate_building_layout
+from evac_swarm.space import HybridSpace
 
 class SwarmExplorerModel(Model):
     """
@@ -12,15 +15,22 @@ class SwarmExplorerModel(Model):
     """
     def __init__(
         self,
-        width=100,
-        height=100,
+        width=15,
+        height=15,
         robot_count=10,
         casualty_count=3,
-        min_room_size=20,
-        wall_thickness=1,
-        vision_range=15
+        min_room_size=3,
+        wall_thickness=0.3,
+        vision_range=3,
+        grid_size=100,
+        seed=42  # Default fixed seed
     ):
+        # Initialize random number generator with seed
         super().__init__()
+        self.random = random.Random(seed)
+        
+        # Generate a new seed for the building layout
+        building_seed = self.random.randint(0, 1000000)
         
         # Set parameters directly
         self.width = width
@@ -30,30 +40,38 @@ class SwarmExplorerModel(Model):
         self.vision_range = vision_range
         self.robot_count = robot_count
         self.casualty_count = casualty_count
+        self.grid_size = grid_size
 
-        # Initialise space
-        self.space = ContinuousSpace(self.width, self.height, torus=False)
-        print(f"Space type: {type(self.space)}")
+        # Initialize hybrid space
+        self.space = HybridSpace(width, height, grid_size=grid_size, torus=False)
         
-        # Initialise DataCollector
-        self.datacollector = DataCollector(
-            model_reporters={"Coverage": lambda m: len(m.coverage_grid)/(self.width*self.height)*100}
+        # Generate building layout with new seed
+        wall_layout = generate_building_layout(
+            width, height, 
+            min_room_size, 
+            wall_thickness,
+            seed=building_seed  # Use new seed for building
         )
-        print("DataCollector exists:", hasattr(self, 'datacollector'))
+        
+        # Add walls to both representations
+        for wall in wall_layout:
+            self.space.add_wall(wall)
+        
+        # Add coverage tracking using grid coordinates
+        self.coverage_grid = np.zeros((grid_size, grid_size), dtype=bool)
+        
+        # Calculate total accessible cells (non-wall cells)
+        self.total_accessible_cells = grid_size * grid_size - np.sum(self.space.wall_grid)
+
+        # Update DataCollector
+        self.datacollector = DataCollector(
+            model_reporters={
+                "Coverage": lambda m: (np.sum(m.coverage_grid) / m.total_accessible_cells) * 100
+            }
+        )
         
         self._next_id = 0  # Add counter for agent IDs
         
-        # Generate building layout using a BSP algorithm.
-        # Returns a list of wall definitions (each a dict with x, y, width and height)
-        self.wall_layout = generate_building_layout(self.width, self.height, self.min_room_size, self.wall_thickness)
-        
-        # Create Wall agents for each wall piece in the layout.
-        for wall_spec in self.wall_layout:
-            wall = WallAgent(self._next_id, self, wall_spec)
-            self._next_id += 1
-            self.register_agent(wall)
-            self.space.place_agent(wall, (wall_spec['x'], wall_spec['y']))
-
         # Define the entry point (deployment operator location).
         # We assume the entry is at the centre of the bottom wall.
         self.entry_point = (self.width / 2, 0 + self.wall_thickness)
@@ -63,25 +81,22 @@ class SwarmExplorerModel(Model):
             robot = RobotAgent(self._next_id, self, pos=self.entry_point, vision_range=self.vision_range)
             self._next_id += 1
             self.register_agent(robot)
-            self.space.place_agent(robot, self.entry_point)
+            self.space.place_agent(robot, self.entry_point)  # Continuous coordinates
             
         # Randomly place Casualty agents within the building.
         for _ in range(self.casualty_count):
-            # For simplicity, sample random positions until one is not colliding with a wall.
             while True:
-                pos = (random.uniform(self.wall_thickness, self.width - self.wall_thickness),
-                       random.uniform(self.wall_thickness, self.height - self.wall_thickness))
-                # Using a simple check: the point should not be inside any wall rectangle.
-                if not any(self._point_in_wall(pos, spec) for spec in self.wall_layout):
+                pos = (
+                    self.random.uniform(self.wall_thickness, self.width - self.wall_thickness),
+                    self.random.uniform(self.wall_thickness, self.height - self.wall_thickness)
+                )
+                if not any(self._point_in_wall(pos, spec) for spec in wall_layout):
                     casualty = CasualtyAgent(self._next_id, self, pos)
                     self._next_id += 1
                     self.register_agent(casualty)
                     self.space.place_agent(casualty, pos)
                     break
 
-        # Add coverage tracking
-        self.coverage_grid = set()  # Set of (x,y) tuples that have been visited
-        
         self.running = True
 
     def _point_in_wall(self, point, wall_spec):
@@ -98,13 +113,21 @@ class SwarmExplorerModel(Model):
         for agent in self.agents:
             if isinstance(agent, RobotAgent):
                 x, y = agent.pos
+                # Convert vision range to grid coordinates
+                vision_grid_range = int(agent.vision_range * self.grid_size / self.width)
+                
+                # Get grid position
+                grid_x, grid_y = self.space.continuous_to_grid(x, y)
+                
                 # Add positions within vision range to coverage
-                for dx in range(-int(agent.vision_range), int(agent.vision_range) + 1):
-                    for dy in range(-int(agent.vision_range), int(agent.vision_range) + 1):
-                        if (dx*dx + dy*dy) <= agent.vision_range*agent.vision_range:
-                            new_x, new_y = x + dx, y + dy
-                            if 0 <= new_x < self.width and 0 <= new_y < self.height:
-                                self.coverage_grid.add((int(new_x), int(new_y)))
+                for dx in range(-vision_grid_range, vision_grid_range + 1):
+                    for dy in range(-vision_grid_range, vision_grid_range + 1):
+                        if (dx*dx + dy*dy) <= vision_grid_range*vision_grid_range:
+                            new_x, new_y = grid_x + dx, grid_y + dy
+                            if (0 <= new_x < self.grid_size and 
+                                0 <= new_y < self.grid_size and 
+                                not self.space.wall_grid[new_y, new_x]):
+                                self.coverage_grid[new_y, new_x] = True
         
         # Collect data
         self.datacollector.collect(self)

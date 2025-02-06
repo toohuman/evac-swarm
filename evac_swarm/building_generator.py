@@ -1,11 +1,14 @@
 import random
 import matplotlib.patches as patches
 
-def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3):
+def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3, seed=None):
     """
     Generate a building layout using Binary Space Partitioning.
     Returns a list of wall specifications (each a dict with x, y, width and height).
     """
+    # Set random seed if provided
+    rng = random.Random(seed)
+
     # Define real-world scale for internal features
     scale_factor = 1.0  # 1 unit = 1 meter
 
@@ -55,8 +58,8 @@ def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3)
             orientation = "horizontal"
             
         if orientation == "vertical":
-            split_x = random.uniform(x + min_room_size, x + w - min_room_size)
-            door_y = random.uniform(y + h * 0.4, y + h * 0.6)  # Centralize door
+            split_x = rng.uniform(x + min_room_size, x + w - min_room_size)
+            door_y = rng.uniform(y + h * 0.4, y + h * 0.6)  # Centralize door
             
             # Ensure segments align at the door
             segment_height = door_y - y - door_width / 2
@@ -80,8 +83,8 @@ def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3)
             partition(split_x, y, x + w - split_x, h)
         
         else:
-            split_y = random.uniform(y + min_room_size, y + h - min_room_size)
-            door_x = random.uniform(x + w * 0.4, x + w * 0.6)  # Centralize door
+            split_y = rng.uniform(y + min_room_size, y + h - min_room_size)
+            door_x = rng.uniform(x + w * 0.4, x + w * 0.6)  # Centralize door
             
             # Ensure segments align at the door
             segment_width = door_x - x - door_width / 2

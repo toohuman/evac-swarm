@@ -82,6 +82,12 @@ class RobotAgent(Agent):
                     self.reported_casualties.add(agent.pos)
                     agent.discovered = True
 
+    def move(self, new_position):
+        """Move to new position if there's no wall there."""
+        x, y = new_position
+        if not self.model.space.is_wall_at(x, y):
+            self.model.space.move_agent(self, new_position)
+
 class WallAgent(Agent):
     """
     A wall agent representing an impassable structure.
