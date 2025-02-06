@@ -1,13 +1,18 @@
 import random
 import matplotlib.patches as patches
 
-def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3, seed=None):
+def generate_building_layout(
+    width, height,
+    min_room_size=3, wall_thickness=0.3,
+    rng=None
+):
     """
     Generate a building layout using Binary Space Partitioning.
     Returns a list of wall specifications (each a dict with x, y, width and height).
     """
     # Set random seed if provided
-    rng = random.Random(seed)
+    if rng is None:
+        rng = random.Random()
 
     # Define real-world scale for internal features
     scale_factor = 1.0  # 1 unit = 1 meter
@@ -108,6 +113,7 @@ def generate_building_layout(width, height, min_room_size=3, wall_thickness=0.3,
             partition(x, split_y, w, y + h - split_y)
     
     partition(0, 0, width, height)
+    print(min_room_size, wall_thickness)
     return walls
 
 def draw_walls(ax, walls):

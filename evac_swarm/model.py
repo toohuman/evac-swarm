@@ -31,9 +31,6 @@ class SwarmExplorerModel(Model):
         super().__init__()
         self.random = random.Random()
         
-        # Generate a new seed for the building layout
-        building_seed = self.random.randint(0, 1000000)
-        
         # Set parameters directly
         self.width = width
         self.height = height
@@ -52,7 +49,7 @@ class SwarmExplorerModel(Model):
             width, height, 
             min_room_size, 
             wall_thickness,
-            seed=building_seed  # Use new seed for building
+            rng=self.random  # Use new seed for building
         )
         
         # Add walls to both representations

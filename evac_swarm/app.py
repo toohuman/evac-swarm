@@ -6,6 +6,7 @@ import solara
 import numpy as np
 import matplotlib.patches as patches
 from mesa.experimental.devs import ABMSimulator
+from functools import partial
 
 def agent_portrayal(agent):
     """Define how to portray each type of agent"""
@@ -33,10 +34,24 @@ def agent_portrayal(agent):
             "size": 30
         }
 
+def post_process_with_sim(ax, sim):
+    return post_process_space(ax, sim.model)
+
 @solara.component
 def post_process_space(ax, model):
-    """Post-process the space visualization to add walls."""
-    # Draw walls as rectangles
+    """Post-process the space visualization to add walls.
+    Instead of clearing the entire axes (which resets the view), we remove existing wall patches.
+    Then we re-draw the walls and re-apply the axis limits.
+    """
+    print(model)
+    # Remove existing patches (only the ones that represent walls)
+    # We assume that the wall patches have facecolor 'grey'; adjust the filter as needed.
+    for patch in list(ax.patches):
+        if patch.get_facecolor()[:3] == (0.5, 0.5, 0.5) or patch.get_facecolor()[:3] == (0.7529411764705882, 0.7529411764705882, 0.7529411764705882):  
+            # The exact grey value may depend on your parameters.
+            patch.remove()
+
+    # Draw walls as rectangles using the latest wall specifications:
     for wall_spec in model.space.wall_specs:
         x = wall_spec['x'] - wall_spec['width'] / 2
         y = wall_spec['y'] - wall_spec['height'] / 2
@@ -49,19 +64,21 @@ def post_process_space(ax, model):
             alpha=0.8
         )
         ax.add_patch(rect)
-    
-    ax.set_aspect('equal')
+
+    # Reinstate the axis limits so the view stays correct.
+    ax.set_xlim(0, model.width)
+    ax.set_ylim(0, model.height)
     ax.set_xticks([])
     ax.set_yticks([])
 
 # Model parameters with explicit value extraction
 model_params = {
-    "width": 22,  # Building is 1.5x larger than original dimensions (15 * 1.5)
-    "height": 22,
+    "width": 40,  # Building is 1.5x larger than original dimensions (15 * 1.5)
+    "height": 25,
     "robot_count": Slider("Robots", 5, 1, 20).value,
     "casualty_count": Slider("Casualties", 3, 1, 10).value,
-    "min_room_size": 3,
-    "wall_thickness": 0.3,
+    "min_room_size": 4,
+    "wall_thickness": 0.5,
     "vision_range": Slider("Vision Range", 3, 1, 10).value
 }
 
@@ -70,21 +87,20 @@ simulator = ABMSimulator()
 
 # Instantiate the model via the simulator
 model = SwarmExplorerModel(
-    width=model_params['width'],
-    height=model_params['height'],
+    **model_params,
     simulator=simulator
 )
 
 # Create components with model reference
 space = make_space_component(
         agent_portrayal,
-        post_process=lambda ax: post_process_space(ax, model),
+        post_process=partial(post_process_with_sim, sim=simulator),
         space_name="space",
-        canvas_width=900,
-        canvas_height=900,
+        canvas_width=600,
+        canvas_height=600,
         grid_width=int(round(model.width)),
         grid_height=int(round(model.height)),
-        draw_grid=False
+        draw_grid=False,
     )
 
 coverage_chart = make_plot_component(
