@@ -56,8 +56,8 @@ def post_process_space(ax, model):
 
 # Model parameters with explicit value extraction
 model_params = {
-    "width": 15,  # Match building generator scale
-    "height": 15,
+    "width": 22,  # Building is 1.5x larger than original dimensions (15 * 1.5)
+    "height": 22,
     "robot_count": Slider("Robots", 5, 1, 20).value,
     "casualty_count": Slider("Casualties", 3, 1, 10).value,
     "min_room_size": 3,
@@ -71,10 +71,10 @@ def make_space_with_walls(model):
         agent_portrayal,
         post_process=lambda ax: post_process_space(ax, model),
         space_name="space",
-        canvas_width=600,
-        canvas_height=600,
-        grid_width=15,
-        grid_height=15,
+        canvas_width=900,
+        canvas_height=900,
+        grid_width=int(round(model.width)),
+        grid_height=int(round(model.height)),
         draw_grid=False
     )
 
@@ -82,7 +82,11 @@ def make_space_with_walls(model):
 simulator = ABMSimulator()
 
 # Instantiate the model via the simulator
-model = SwarmExplorerModel(simulator=simulator)
+model = SwarmExplorerModel(
+    width=model_params['width'],
+    height=model_params['height'],
+    simulator=simulator
+)
 
 # Create components with model reference
 space = make_space_with_walls(model)
