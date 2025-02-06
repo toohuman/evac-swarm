@@ -4,6 +4,7 @@ from mesa import Model
 from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from mesa.experimental.cell_space import PropertyLayer
+from mesa.experimental.devs import ABMSimulator
 
 from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent
 from evac_swarm.building_generator import generate_building_layout
@@ -23,11 +24,12 @@ class SwarmExplorerModel(Model):
         wall_thickness=0.3,
         vision_range=3,
         grid_size=100,
-        seed=42  # Default fixed seed
+        seed=None,
+        simulator: ABMSimulator = None,
     ):
         # Initialize random number generator with seed
         super().__init__()
-        self.random = random.Random(seed)
+        self.random = random.Random()
         
         # Generate a new seed for the building layout
         building_seed = self.random.randint(0, 1000000)
@@ -98,6 +100,10 @@ class SwarmExplorerModel(Model):
                     break
 
         self.running = True
+
+        self.simulator = simulator
+        if self.simulator is not None:
+            self.simulator.setup(self)  # Ensure the simulator is set up on the model instance.
 
     def _point_in_wall(self, point, wall_spec):
         """Check whether a point is inside a wall rectangle defined by wall_spec."""

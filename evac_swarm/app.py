@@ -5,6 +5,7 @@ from mesa.visualization.components import make_space_component, make_plot_compon
 import solara
 import numpy as np
 import matplotlib.patches as patches
+from mesa.experimental.devs import ABMSimulator
 
 def agent_portrayal(agent):
     """Define how to portray each type of agent"""
@@ -77,8 +78,11 @@ def make_space_with_walls(model):
         draw_grid=False
     )
 
-# Model
-model = SwarmExplorerModel()
+# Create a simulator that will re-instantiate the model on reset.
+simulator = ABMSimulator()
+
+# Instantiate the model via the simulator
+model = SwarmExplorerModel(simulator=simulator)
 
 # Create components with model reference
 space = make_space_with_walls(model)
@@ -87,12 +91,13 @@ coverage_chart = make_plot_component(
     backend="matplotlib"
 )
 
-# Create the Solara-based visualisation
+# Create the Solara-based visualisation, passing the simulator so resets create a new model instance.
 Page = SolaraViz(
     model=model,
     components=[space, coverage_chart],
     name="Evacuation Robot Swarm",
-    model_params=model_params
+    model_params=model_params,
+    simulator=simulator,
 )
 
 # --- Launching the app ---
