@@ -65,19 +65,6 @@ model_params = {
     "vision_range": Slider("Vision Range", 3, 1, 10).value
 }
 
-# Create space component with model reference
-def make_space_with_walls(model):
-    return make_space_component(
-        agent_portrayal,
-        post_process=lambda ax: post_process_space(ax, model),
-        space_name="space",
-        canvas_width=900,
-        canvas_height=900,
-        grid_width=int(round(model.width)),
-        grid_height=int(round(model.height)),
-        draw_grid=False
-    )
-
 # Create a simulator that will re-instantiate the model on reset.
 simulator = ABMSimulator()
 
@@ -89,7 +76,17 @@ model = SwarmExplorerModel(
 )
 
 # Create components with model reference
-space = make_space_with_walls(model)
+space = make_space_component(
+        agent_portrayal,
+        post_process=lambda ax: post_process_space(ax, model),
+        space_name="space",
+        canvas_width=900,
+        canvas_height=900,
+        grid_width=int(round(model.width)),
+        grid_height=int(round(model.height)),
+        draw_grid=False
+    )
+
 coverage_chart = make_plot_component(
     "Coverage",
     backend="matplotlib"
