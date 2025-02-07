@@ -43,8 +43,7 @@ def post_process_space(ax, model):
     Instead of clearing the entire axes (which resets the view), we remove existing wall patches.
     Then we re-draw the walls and re-apply the axis limits.
     """
-    print(model)
-    # Remove existing patches (only the ones that represent walls)
+    
     # We assume that the wall patches have facecolor 'grey'; adjust the filter as needed.
     for patch in list(ax.patches):
         if patch.get_facecolor()[:3] == (0.5, 0.5, 0.5) or patch.get_facecolor()[:3] == (0.7529411764705882, 0.7529411764705882, 0.7529411764705882):  

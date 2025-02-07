@@ -113,7 +113,6 @@ def generate_building_layout(
             partition(x, split_y, w, y + h - split_y)
     
     partition(0, 0, width, height)
-    print(min_room_size, wall_thickness)
     return walls
 
 def draw_walls(ax, walls):
