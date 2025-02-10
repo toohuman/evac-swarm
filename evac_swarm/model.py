@@ -129,18 +129,39 @@ class SwarmExplorerModel(Model):
                 # Convert vision range to grid coordinates
                 vision_grid_range = int(agent.vision_range * self.grid_size / self.width)
                 
-                # Get grid position
+                # Get grid position for the robot
                 grid_x, grid_y = self.space.continuous_to_grid(x, y)
                 
-                # Add positions within vision range to coverage
-                for dx in range(-vision_grid_range, vision_grid_range + 1):
-                    for dy in range(-vision_grid_range, vision_grid_range + 1):
-                        if (dx*dx + dy*dy) <= vision_grid_range*vision_grid_range:
-                            new_x, new_y = grid_x + dx, grid_y + dy
-                            if (0 <= new_x < self.grid_size and 
-                                0 <= new_y < self.grid_size and 
-                                not self.space.wall_grid[new_y, new_x]):
-                                self.coverage_grid[new_y, new_x] = True
+                # Create a range of relative indices for the vision range
+                r = np.arange(-vision_grid_range, vision_grid_range + 1)
+                dx, dy = np.meshgrid(r, r, indexing='xy')
+                
+                # Create a boolean mask for a circular vision area
+                circle_mask = (dx**2 + dy**2) <= vision_grid_range**2
+                
+                # Extract the relative offsets within the circle
+                rel_offsets = np.stack((dx[circle_mask], dy[circle_mask]), axis=-1)
+                
+                # Compute the absolute grid coordinates to update
+                grid_positions = rel_offsets + np.array([grid_x, grid_y])
+                x_coords = grid_positions[:, 0]
+                y_coords = grid_positions[:, 1]
+                
+                # Filter positions that fall outside the grid boundaries
+                valid_mask = (
+                    (x_coords >= 0) & (x_coords < self.grid_size) &
+                    (y_coords >= 0) & (y_coords < self.grid_size)
+                )
+                x_coords = x_coords[valid_mask]
+                y_coords = y_coords[valid_mask]
+                
+                # Further filter out cells that are walls by checking the wall grid
+                not_wall = ~self.space.wall_grid[y_coords, x_coords]
+                x_coords = x_coords[not_wall]
+                y_coords = y_coords[not_wall]
+                
+                # Mark these positions as covered
+                self.coverage_grid[y_coords, x_coords] = True
         
         # Collect data
         self.datacollector.collect(self)
