@@ -3,7 +3,8 @@ import matplotlib.patches as patches
 
 def generate_building_layout(
     width, height,
-    min_room_size=3, wall_thickness=0.3,
+    min_room_size=3,
+    wall_thickness=0.3,
     rng=None
 ):
     """
@@ -21,7 +22,7 @@ def generate_building_layout(
     # Convert internal dimensions to real-world scale
     min_room_size *= scale_factor
     wall_thickness *= scale_factor
-    door_width = 1 * scale_factor
+    door_width = 3 * scale_factor
 
     walls = []
     

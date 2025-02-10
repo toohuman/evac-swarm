@@ -5,26 +5,35 @@ from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from mesa.experimental.cell_space import PropertyLayer
 from mesa.experimental.devs import ABMSimulator
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, distance_transform_edt
+from rtree import index
 
 from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent
 from evac_swarm.building_generator import generate_building_layout
 from evac_swarm.space import HybridSpace
 
+# Delete if left unused
 def bresenham(x0, y0, x1, y1):
     """
-    Vectorised Bresenham's Algorithm using NumPy.
-    Returns a numpy array of integer coordinates along the line from (x0, y0) to (x1, y1).
+    Bresenham's Line Algorithm.
+    Yields integer coordinates on the line from (x0, y0) to (x1, y1).
     """
-    dx = x1 - x0
-    dy = y1 - y0
-    n = int(max(abs(dx), abs(dy)))
-    if n == 0:
-        return np.array([[x0, y0]])
-    t = np.linspace(0, 1, n + 1)
-    xs = np.rint(x0 + dx * t).astype(int)
-    ys = np.rint(y0 + dy * t).astype(int)
-    return np.column_stack((xs, ys))
+    dx = abs(x1 - x0)
+    sx = 1 if x0 < x1 else -1
+    dy = -abs(y1 - y0)
+    sy = 1 if y0 < y1 else -1
+    err = dx + dy  # error value e_xy
+    while True:
+        yield x0, y0
+        if x0 == x1 and y0 == y1:
+            break
+        e2 = 2 * err
+        if e2 >= dy:
+            err += dy
+            x0 += sx
+        if e2 <= dx:
+            err += dx
+            y0 += sy
 
 class SwarmExplorerModel(Model):
     """
@@ -101,6 +110,23 @@ class SwarmExplorerModel(Model):
             self._next_id += 1
             self.register_agent(wall_agent)
         
+        # Build an R-tree spatial index for the wall agents.
+        # Assume wall_agent.unique_id is unique.
+        self.wall_index = index.Index()
+        for agent in self.agents:
+            if isinstance(agent, WallAgent):
+                wx, wy = agent.wall_spec['x'], agent.wall_spec['y']
+                half_w = agent.wall_spec['width'] / 2.0
+                half_h = agent.wall_spec['height'] / 2.0
+                bbox = (wx - half_w, wy - half_h, wx + half_w, wy + half_h)
+                # Instead of storing the agent (which cannot be pickled), store just the wall_spec.
+                self.wall_index.insert(agent.unique_id, bbox, obj=agent.wall_spec)
+        
+        # Precompute the distance map for collision detection.
+        # Compute the Euclidean distance (in grid cells) from each free cell to the nearest wall.
+        # Note: wall_grid is True for walls, so invert it.
+        self.distance_map = distance_transform_edt(~self.space.wall_grid)
+        
         # Define the entry point (deployment operator location).
         # We assume the entry is at the centre of the bottom wall.
         self.entry_point = (self.width / 2, 1 + self.wall_thickness)
@@ -143,19 +169,51 @@ class SwarmExplorerModel(Model):
         half_h = wall_spec['height'] / 2
         return (wx - half_w <= x <= wx + half_w) and (wy - half_h <= y <= wy + half_h)
 
-    def _is_visible(self, start, end):
-        """Check if the line from start to end is unobstructed by walls."""
-        x0, y0 = start
-        x1, y1 = end
-        line = np.array(list(bresenham(x0, y0, x1, y1)))
-        for x, y in line:
-            if self.space.wall_grid[y, x]:
-                return False
-        return True
+    # def _is_visible(self, start, end):
+    #     """Check if the line from start to end is unobstructed by walls."""
+    #     x0, y0 = start
+    #     x1, y1 = end
+    #     line = np.array(list(bresenham(x0, y0, x1, y1)))
+    #     for x, y in line:
+    #         if self.space.wall_grid[y, x]:
+    #             return False
+    #     return True
+    
+    def _is_visible_vectorized(self, start, end, wall_grid):
+        """
+        Determines if the line from start to end is clear of walls.
+        
+        Parameters:
+            start: (x, y) tuple representing the start coordinates in grid space.
+            end: (x, y) tuple representing the end coordinates in grid space.
+            wall_grid: A 2D boolean NumPy array where True indicates a wall.
+        
+        Returns:
+            True if there is a clear line from start to end, False if any cell is blocked.
+        """
+        # Compute Euclidean distance from start to end:
+        distance = np.hypot(end[0] - start[0], end[1] - start[1])
+        # Number of sample points along the line.
+        num_points = int(np.ceil(distance)) + 1
+        
+        # Generate linearly spaced coordinates along the line:
+        xs = np.linspace(start[0], end[0], num_points)
+        ys = np.linspace(start[1], end[1], num_points)
+        
+        # Convert these coordinates to grid indices:
+        xs_int = np.clip(np.round(xs).astype(int), 0, wall_grid.shape[1] - 1)
+        ys_int = np.clip(np.round(ys).astype(int), 0, wall_grid.shape[0] - 1)
+        
+        # Index the wall grid vectorised:
+        cells_along_line = wall_grid[ys_int, xs_int]
+        
+        # If any cell is a wall, line-of-sight is obstructed.
+        return not np.any(cells_along_line)
+
 
     def step(self):
-        """Advance the model by one step."""
-        # Update coverage based on robot positions
+        """Advance the model by one step using vectorized updates for robots."""
+        # Update coverage (as before, if needed)
         for agent in self.agents:
             if isinstance(agent, RobotAgent):
                 x, y = agent.pos
@@ -181,7 +239,7 @@ class SwarmExplorerModel(Model):
                 
                 # Check line of sight for each valid position
                 visible_mask = np.array([
-                    self._is_visible((grid_x, grid_y), (x, y))
+                    self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid)
                     for x, y in zip(x_coords, y_coords)
                 ])
                 x_coords = x_coords[visible_mask]
@@ -190,10 +248,10 @@ class SwarmExplorerModel(Model):
                 
                 # Mark these positions as covered
                 self.coverage_grid[y_coords, x_coords] = True
-        
-        # Collect data
-        self.datacollector.collect(self)
-        
-        # Step all agents
+
+        # Step any remaining agents that don't get handled in the vectorized update.
         for agent in self.agents:
             agent.step()
+
+        # Collect data after updates.
+        self.datacollector.collect(self)

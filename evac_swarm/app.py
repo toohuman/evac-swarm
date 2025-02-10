@@ -26,7 +26,6 @@ def agent_portrayal(agent):
             "color": COLOR_MAPPING["Robot"],
             "marker": "o",  # Circle marker
             "size": agent.radius * 100,  # Scale the radius for clear visualisation
-            "line": dict(width=2, color='red')
         }
         
     elif isinstance(agent, WallAgent):
@@ -62,7 +61,7 @@ def post_process_space(ax, model):
             (x, y),
             wall_spec['width'],
             wall_spec['height'],
-            facecolor='grey',
+            facecolor='black',
             edgecolor='none',
             alpha=0.8
         )
@@ -73,6 +72,11 @@ def post_process_space(ax, model):
     ax.set_ylim(0, model.height)
     ax.set_xticks([])
     ax.set_yticks([])
+
+@solara.component
+def post_process_coverage(ax):
+    """Post-process the coverage chart to set the y-axis fixed between 0 and 100."""
+    ax.set_ylim(0, 100)
 
 # Model parameters with explicit value extraction
 model_params = {
@@ -104,8 +108,8 @@ model_params = {
     },
     "wall_thickness": Slider("Wall Thickness", 0.3, 0.1, 0.8, step=0.01),
     "robot_count": Slider("Robots", 20, 1, 50),
-    "casualty_count": Slider("Casualties", 2, 1, 10),
-    "vision_range": Slider("Vision Range", 1, 1, 10),
+    "casualty_count": Slider("Casualties", 3, 1, 10),
+    "vision_range": Slider("Vision Range", 3, 1, 10),
 }
 
 # Create a simulator that will re-instantiate the model on reset.
@@ -130,7 +134,8 @@ space = make_space_component(
 
 coverage_chart = make_plot_component(
     "Coverage",
-    backend="matplotlib"
+    backend="matplotlib",
+    post_process=post_process_coverage
 )
 
 # Create the Solara-based visualisation, passing the simulator so resets create a new model instance.

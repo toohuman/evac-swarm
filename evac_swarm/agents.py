@@ -19,8 +19,8 @@ class RobotAgent(Agent):
         # A set to store aggregated casualty reports (e.g. positions)
         self.reported_casualties = set()
 
-        self.move_speed = 0.5/60
-        self.turn_speed = 3
+        self.move_speed = 0.3/2
+        self.turn_speed = 8
 
     def move_forward(self, distance):
         """Move the robot forward by a specified distance."""
@@ -29,7 +29,7 @@ class RobotAgent(Agent):
         new_y = self.pos[1] + distance * math.sin(rad)
         new_pos = (new_x, new_y)
         
-        if not self.detect_collision(new_pos):
+        if not self.detect_collision_fast(new_pos):
             self.model.space.move_agent(self, new_pos)
             self.pos = new_pos
 
@@ -42,13 +42,14 @@ class RobotAgent(Agent):
         self.orientation = (self.orientation + angle) % 360
 
     def step(self):
-        """Advance the robot by one step."""
-        # Example behaviour: move forward and randomly turn
-        self.move_forward(self.move_speed)  # Move forward by 1 unit
-        if self.model.random.random() < 0.5:
-            self.turn_left(self.turn_speed)  # Turn left by 15 degrees
-        else:
-            self.turn_right(self.turn_speed)  # Turn right by 15 degrees
+        # Brownian motion style update:
+        # Instead of choosing a fixed left/right turn, update the orientation with
+        # a small random change sampled from a normal distribution.
+        delta_angle = self.model.random.gauss(0, self.turn_speed)
+        self.orientation = (self.orientation + delta_angle) % 360
+
+        # Move forward by a fixed step length.
+        self.move_forward(self.move_speed)
         
         # Attempt to detect casualties within vision_range.
         self.detect_casualties()
@@ -58,7 +59,7 @@ class RobotAgent(Agent):
         # Check for wall collisions
         for agent in self.model.agents:
             if isinstance(agent, WallAgent):
-                if self._collides_with_wall(new_pos, agent):
+                if self.collides_with_wall(new_pos, self.radius, agent.wall_spec):
                     return True
                 # elif type(agent).__name__ == "RobotAgent" and agent.unique_id != self.unique_id:
                 #     if euclidean_distance(new_pos, agent.pos) < (self.radius * 2):
@@ -71,24 +72,44 @@ class RobotAgent(Agent):
 
         return False
 
-    def _collides_with_wall(self, new_pos, wall_agent):
+    def detect_collision_fast(self, new_pos):
+        """Check collisions with walls using the model's spatial index for accelerated lookup.
+        Returns True if a collision is detected, False otherwise.
         """
-        Collision detection for a circular robot and a rectangular wall.
-        wall_agent.wall_spec holds the wall rectangle information.
+        x, y = new_pos
+        # Check simulation bounds.
+        if x < 0 or x > self.model.width or y < 0 or y > self.model.height:
+            return True
+
+        # Define a bounding box around the new position.
+        bbox = (x - self.radius, y - self.radius, x + self.radius, y + self.radius)
+
+        # Query the spatial index for candidate wall agents.
+        for candidate in self.model.wall_index.intersection(bbox, objects=True):
+            wall_spec = candidate.object
+            if RobotAgent.collides_with_wall(new_pos, self.radius, wall_spec):
+                return True
+        return False
+
+    @staticmethod
+    def collides_with_wall(new_pos, radius, wall_spec):
+        """
+        Collision detection for a circular agent (with radius)
+        and a rectangular wall defined by wall_spec.
+        Returns True if the distance from new_pos to the wall is less than radius.
         """
         px, py = new_pos
-        spec = wall_agent.wall_spec
-        wx, wy = spec['x'], spec['y']
-        half_w = spec['width'] / 2
-        half_h = spec['height'] / 2
+        wx, wy = wall_spec['x'], wall_spec['y']
+        half_w = wall_spec['width'] / 2
+        half_h = wall_spec['height'] / 2
 
         # Find the closest point on the rectangle to the circle centre.
         closest_x = max(wx - half_w, min(px, wx + half_w))
         closest_y = max(wy - half_h, min(py, wy + half_h))
 
-        # Calculate the distance from the agent's position to the closest point on the wall
-        distance = euclidean_distance(new_pos, (closest_x, closest_y))
-        return distance < self.radius
+        # Calculate the Euclidean distance.
+        distance = math.hypot(px - closest_x, py - closest_y)
+        return distance < radius
 
     def detect_casualties(self):
         """Detect casualty agents within vision range and update the report."""
