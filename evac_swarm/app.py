@@ -99,13 +99,13 @@ model_params = {
     "min_room_size": 
     {
         'type': "InputText",
-        'value': 5,
+        'value': 6,
         'label': "Minimum Room Size"
     },
     "wall_thickness": Slider("Wall Thickness", 0.3, 0.1, 0.8, step=0.01),
-    "robot_count": Slider("Robots", 1, 1, 20),
-    "casualty_count": Slider("Casualties", 1, 1, 10),
-    "vision_range": Slider("Vision Range", 3, 1, 10),
+    "robot_count": Slider("Robots", 20, 1, 50),
+    "casualty_count": Slider("Casualties", 2, 1, 10),
+    "vision_range": Slider("Vision Range", 1, 1, 10),
 }
 
 # Create a simulator that will re-instantiate the model on reset.

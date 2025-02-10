@@ -5,10 +5,26 @@ from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from mesa.experimental.cell_space import PropertyLayer
 from mesa.experimental.devs import ABMSimulator
+from scipy.ndimage import binary_dilation
 
 from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent
 from evac_swarm.building_generator import generate_building_layout
 from evac_swarm.space import HybridSpace
+
+def bresenham(x0, y0, x1, y1):
+    """
+    Vectorised Bresenham's Algorithm using NumPy.
+    Returns a numpy array of integer coordinates along the line from (x0, y0) to (x1, y1).
+    """
+    dx = x1 - x0
+    dy = y1 - y0
+    n = int(max(abs(dx), abs(dy)))
+    if n == 0:
+        return np.array([[x0, y0]])
+    t = np.linspace(0, 1, n + 1)
+    xs = np.rint(x0 + dx * t).astype(int)
+    ys = np.rint(y0 + dy * t).astype(int)
+    return np.column_stack((xs, ys))
 
 class SwarmExplorerModel(Model):
     """
@@ -110,6 +126,13 @@ class SwarmExplorerModel(Model):
                     self.space.place_agent(casualty, pos)
                     break
 
+        # Precompute the coverage offsets for the shared vision range
+        vision_grid_range = int(vision_range * grid_size / width)
+        r = np.arange(-vision_grid_range, vision_grid_range + 1)
+        dx, dy = np.meshgrid(r, r, indexing='xy')
+        circle_mask = (dx**2 + dy**2) <= vision_grid_range**2
+        self.coverage_offsets = np.stack((dx[circle_mask], dy[circle_mask]), axis=-1)
+
         self.running = True
 
     def _point_in_wall(self, point, wall_spec):
@@ -120,30 +143,26 @@ class SwarmExplorerModel(Model):
         half_h = wall_spec['height'] / 2
         return (wx - half_w <= x <= wx + half_w) and (wy - half_h <= y <= wy + half_h)
 
+    def _is_visible(self, start, end):
+        """Check if the line from start to end is unobstructed by walls."""
+        x0, y0 = start
+        x1, y1 = end
+        line = np.array(list(bresenham(x0, y0, x1, y1)))
+        for x, y in line:
+            if self.space.wall_grid[y, x]:
+                return False
+        return True
+
     def step(self):
         """Advance the model by one step."""
         # Update coverage based on robot positions
         for agent in self.agents:
             if isinstance(agent, RobotAgent):
                 x, y = agent.pos
-                # Convert vision range to grid coordinates
-                vision_grid_range = int(agent.vision_range * self.grid_size / self.width)
-                
-                # Get grid position for the robot
                 grid_x, grid_y = self.space.continuous_to_grid(x, y)
                 
-                # Create a range of relative indices for the vision range
-                r = np.arange(-vision_grid_range, vision_grid_range + 1)
-                dx, dy = np.meshgrid(r, r, indexing='xy')
-                
-                # Create a boolean mask for a circular vision area
-                circle_mask = (dx**2 + dy**2) <= vision_grid_range**2
-                
-                # Extract the relative offsets within the circle
-                rel_offsets = np.stack((dx[circle_mask], dy[circle_mask]), axis=-1)
-                
                 # Compute the absolute grid coordinates to update
-                grid_positions = rel_offsets + np.array([grid_x, grid_y])
+                grid_positions = self.coverage_offsets + np.array([grid_x, grid_y])
                 x_coords = grid_positions[:, 0]
                 y_coords = grid_positions[:, 1]
                 
@@ -159,6 +178,15 @@ class SwarmExplorerModel(Model):
                 not_wall = ~self.space.wall_grid[y_coords, x_coords]
                 x_coords = x_coords[not_wall]
                 y_coords = y_coords[not_wall]
+                
+                # Check line of sight for each valid position
+                visible_mask = np.array([
+                    self._is_visible((grid_x, grid_y), (x, y))
+                    for x, y in zip(x_coords, y_coords)
+                ])
+                x_coords = x_coords[visible_mask]
+                y_coords = y_coords[visible_mask]
+                # --------------------------------------------
                 
                 # Mark these positions as covered
                 self.coverage_grid[y_coords, x_coords] = True
