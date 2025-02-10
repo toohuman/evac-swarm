@@ -10,54 +10,70 @@ class RobotAgent(Agent):
     """
     A robot agent that can move in 360° directions, avoid collisions and detect casualties.
     """
-    def __init__(self, unique_id, model, pos, vision_range, radius=1):
+    def __init__(self, unique_id, model, pos, vision_range, radius=0.3):
         Agent.__init__(self, model)
         self.unique_id = unique_id
-        self.orientation = random.uniform(0, 360)  # In degrees
+        self.orientation = self.model.random.uniform(0, 360)  # In degrees
         self.vision_range = vision_range
         self.radius = radius
         # A set to store aggregated casualty reports (e.g. positions)
         self.reported_casualties = set()
 
-    def step(self):
-        # Placeholder: get an action from the shared policy network.
-        # Here we randomly pick a turning angle and a speed.
-        turn_angle = random.uniform(-30, 30)
-        speed = random.uniform(0, 2)
-        # Update orientation.
-        self.orientation = (self.orientation + turn_angle) % 360
-        # Compute new position based on the orientation and speed.
+        self.move_speed = 0.5/60
+        self.turn_speed = 3
+
+    def move_forward(self, distance):
+        """Move the robot forward by a specified distance."""
         rad = math.radians(self.orientation)
-        new_x = self.pos[0] + speed * math.cos(rad)
-        new_y = self.pos[1] + speed * math.sin(rad)
+        new_x = self.pos[0] + distance * math.cos(rad)
+        new_y = self.pos[1] + distance * math.sin(rad)
         new_pos = (new_x, new_y)
         
-        # Check for collisions with walls and other robots.
         if not self.detect_collision(new_pos):
             self.model.space.move_agent(self, new_pos)
             self.pos = new_pos
+
+    def turn_left(self, angle):
+        """Turn the robot left by a specified angle."""
+        self.orientation = (self.orientation - angle) % 360
+
+    def turn_right(self, angle):
+        """Turn the robot right by a specified angle."""
+        self.orientation = (self.orientation + angle) % 360
+
+    def step(self):
+        """Advance the robot by one step."""
+        # Example behaviour: move forward and randomly turn
+        self.move_forward(self.move_speed)  # Move forward by 1 unit
+        if self.model.random.random() < 0.5:
+            self.turn_left(self.turn_speed)  # Turn left by 15 degrees
         else:
-            # Collision encountered: you might want to penalise in the reward function.
-            pass
+            self.turn_right(self.turn_speed)  # Turn right by 15 degrees
         
         # Attempt to detect casualties within vision_range.
         self.detect_casualties()
 
     def detect_collision(self, new_pos):
-        """Check collisions with wall agents and other robot agents."""
+        """Check collisions with walls and other robot agents."""
         # Check for wall collisions
         for agent in self.model.agents:
-            if type(agent).__name__ == "WallAgent":
+            if isinstance(agent, WallAgent):
                 if self._collides_with_wall(new_pos, agent):
                     return True
-            elif type(agent).__name__ == "RobotAgent" and agent.unique_id != self.unique_id:
-                if euclidean_distance(new_pos, agent.pos) < (self.radius * 2):
-                    return True
+                # elif type(agent).__name__ == "RobotAgent" and agent.unique_id != self.unique_id:
+                #     if euclidean_distance(new_pos, agent.pos) < (self.radius * 2):
+                #         return True
+
+        # Check if the new position is out of bounds
+        x, y = new_pos
+        if x < 0 or x > self.model.width or y < 0 or y > self.model.height:
+            return True
+
         return False
 
     def _collides_with_wall(self, new_pos, wall_agent):
         """
-        Simple collision detection for a circular robot and a rectangular wall.
+        Collision detection for a circular robot and a rectangular wall.
         wall_agent.wall_spec holds the wall rectangle information.
         """
         px, py = new_pos
@@ -70,6 +86,7 @@ class RobotAgent(Agent):
         closest_x = max(wx - half_w, min(px, wx + half_w))
         closest_y = max(wy - half_h, min(py, wy + half_h))
 
+        # Calculate the distance from the agent's position to the closest point on the wall
         distance = euclidean_distance(new_pos, (closest_x, closest_y))
         return distance < self.radius
 

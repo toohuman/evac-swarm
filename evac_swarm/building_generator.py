@@ -12,6 +12,7 @@ def generate_building_layout(
     """
     # Set random seed if provided
     if rng is None:
+        print("UH OH")
         rng = random.Random()
 
     # Define real-world scale for internal features
@@ -73,7 +74,7 @@ def generate_building_layout(
                     "x": split_x,
                     "y": y + segment_height / 2,
                     "width": wall_thickness,
-                    "height": segment_height + wall_thickness / 2  # Extend to meet other walls
+                    "height": segment_height  # Extend to meet other walls
                 })
             segment_height = (y + h) - door_y - door_width / 2
             if segment_height > 0:
@@ -81,7 +82,7 @@ def generate_building_layout(
                     "x": split_x,
                     "y": door_y + door_width / 2 + segment_height / 2,
                     "width": wall_thickness,
-                    "height": segment_height + wall_thickness / 2  # Extend to meet other walls
+                    "height": segment_height  # Extend to meet other walls
                 })
             
             partition(x, y, split_x - x, h)

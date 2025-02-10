@@ -16,45 +16,51 @@ class SwarmExplorerModel(Model):
     """
     def __init__(
         self,
-        width=15,
-        height=15,
+        width=20,
+        height=20,
         robot_count=10,
-        casualty_count=3,
-        min_room_size=3,
+        casualty_count=5,
+        min_room_size=11,
         wall_thickness=0.3,
         vision_range=3,
         grid_size=100,
         seed=None,
+        use_seed=False,
         simulator: ABMSimulator = None,
     ):
-        # Initialize random number generator with seed
-        super().__init__()
-        self.random = random.Random()
+        if type(seed) == dict:
+            seed = seed['value']
+        if not use_seed:
+            seed = None
+        super().__init__(seed=seed)
+
+        # # Initialize random number generator with seed
+        # self.random = random.Random(seed) if seed is not None else random.Random()
         
         # Set parameters directly
-        self.width = width
-        self.height = height
-        self.min_room_size = min_room_size
-        self.wall_thickness = wall_thickness
-        self.vision_range = vision_range
-        self.robot_count = robot_count
-        self.casualty_count = casualty_count
+        self.width = float(width)
+        self.height = float(height)
+        self.min_room_size = float(min_room_size)
+        self.wall_thickness = float(wall_thickness)
+        self.robot_count = int(robot_count)
+        self.casualty_count = int(casualty_count)
+        self.vision_range = int(vision_range)
         self.grid_size = grid_size
 
+        self.simulator = simulator
+        if self.simulator is not None:
+            self.simulator.setup(self)  # Ensure the simulator is set up on the model instance.
+        
         # Initialize hybrid space
-        self.space = HybridSpace(width, height, grid_size=grid_size, torus=False)
+        self.space = HybridSpace(self.width, self.height, grid_size=self.grid_size, torus=False)
         
         # Generate building layout with new seed
         wall_layout = generate_building_layout(
-            width, height, 
-            min_room_size, 
-            wall_thickness,
+            self.width, self.height, 
+            self.min_room_size, 
+            self.wall_thickness,
             rng=self.random  # Use new seed for building
         )
-        
-        # Add walls to both representations
-        for wall in wall_layout:
-            self.space.add_wall(wall)
         
         # Add coverage tracking using grid coordinates
         self.coverage_grid = np.zeros((grid_size, grid_size), dtype=bool)
@@ -71,9 +77,17 @@ class SwarmExplorerModel(Model):
         
         self._next_id = 0  # Add counter for agent IDs
         
+        # Add walls to both representations
+        for wall in wall_layout:
+            self.space.add_wall(wall)
+            # Create a WallAgent for each wall
+            wall_agent = WallAgent(self._next_id, self, wall_spec=wall)
+            self._next_id += 1
+            self.register_agent(wall_agent)
+        
         # Define the entry point (deployment operator location).
         # We assume the entry is at the centre of the bottom wall.
-        self.entry_point = (self.width / 2, 0 + self.wall_thickness)
+        self.entry_point = (self.width / 2, 1 + self.wall_thickness)
         
         # Place Robot agents at the entry point.
         for _ in range(self.robot_count):
@@ -97,10 +111,6 @@ class SwarmExplorerModel(Model):
                     break
 
         self.running = True
-
-        self.simulator = simulator
-        if self.simulator is not None:
-            self.simulator.setup(self)  # Ensure the simulator is set up on the model instance.
 
     def _point_in_wall(self, point, wall_spec):
         """Check whether a point is inside a wall rectangle defined by wall_spec."""
@@ -137,4 +147,4 @@ class SwarmExplorerModel(Model):
         
         # Step all agents
         for agent in self.agents:
-            agent.step() 
+            agent.step()
