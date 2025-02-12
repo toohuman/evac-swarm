@@ -1,5 +1,6 @@
 import math
 import random
+import numpy as np
 from mesa import Agent
 
 # A small helper function for distance calculation
@@ -120,11 +121,53 @@ class RobotAgent(Agent):
                     self.reported_casualties.add(agent.pos)
                     agent.discovered = True
 
+    def disperse(self, neighbour_radius=2.0):
+        """
+        Adjust the agent's orientation to move away from nearby robots.
+
+        Parameters:
+            neighbour_radius: the distance within which neighbours affect the dispersion.
+        """
+        # Get nearby robot agents (excluding itself)
+        neighbours = self.model.space.get_neighbors(self.pos, neighbour_radius, include_center=False)
+        if not neighbours:
+            return
+
+        repulsion = np.array([0.0, 0.0])
+        for nbr in neighbours:
+            # Only consider other robots for dispersion.
+            if isinstance(nbr, RobotAgent) and nbr.unique_id != self.unique_id:
+                # Compute the vector from the neighbour to self.
+                vector = np.array(self.pos) - np.array(nbr.pos)
+                # Weight by inverse-square distance to emphasise closer neighbours.
+                distance = np.linalg.norm(vector) + 1e-6  # avoid division by zero
+                repulsion += vector / (distance ** 2)
+
+        # If repulsion vector has magnitude, compute the desired angle.
+        if np.linalg.norm(repulsion) > 0:
+            desired_angle = np.degrees(np.arctan2(repulsion[1], repulsion[0]))
+            # Limit the angle change to self.turn_speed (or another maximum)
+            self.orientation = self.limit_turn(desired_angle)
+
     def move(self, new_position):
         """Move to new position if there's no wall there."""
         x, y = new_position
         if not self.model.space.is_wall_at(x, y):
             self.model.space.move_agent(self, new_position)
+
+    def limit_turn(self, desired_angle):
+        """
+        Limit the change in angle from current_angle to desired_angle to at most max_change degrees.
+        Angles are in degrees.
+        """
+        # Compute the smallest difference in the range [-180, 180]
+        diff = (desired_angle - self.orientation + 180) % 360 - 180
+        if diff > self.turn_speed:
+            diff = self.turn_speed
+        elif diff < -self.turn_speed:
+            diff = -self.turn_speed
+        # Return the updated orientation.
+        return (self.orientation + diff) % 360
 
 class WallAgent(Agent):
     """
