@@ -80,8 +80,21 @@ class SwarmExplorerModel(Model):
         if self.simulator is not None:
             self.simulator.setup(self)  # Ensure the simulator is set up on the model instance.
         
-        # Initialize hybrid space
-        self.space = HybridSpace(self.width, self.height, grid_size=self.grid_size, torus=False)
+        # Determine the aspect ratio
+        aspect_ratio = max(self.width, self.height) / min(self.width, self.height)
+
+        # Adjust grid size to maintain square cells
+        self.grid_size = int(self.grid_size * aspect_ratio)
+
+        # Calculate grid dimensions (height × width)
+        num_cells_y = int(self.grid_size * (self.height / max(self.width, self.height)))
+        num_cells_x = int(self.grid_size * (self.width / max(self.width, self.height)))
+
+        
+        # Initialize both grids consistently as (rows, cols) or (y, x)
+        self.coverage_grid = np.zeros((num_cells_y, num_cells_x), dtype=bool)  # [y, x]
+        self.space = HybridSpace(self.width, self.height, 
+                               dims=(num_cells_y, num_cells_x), torus=False)  # Pass as (y, x)
         
         # Generate building layout with new seed
         wall_layout = generate_building_layout(
@@ -90,12 +103,9 @@ class SwarmExplorerModel(Model):
             self.wall_thickness,
             rng=self.random  # Use new seed for building
         )
-        
-        # Add coverage tracking using grid coordinates
-        self.coverage_grid = np.zeros((grid_size, grid_size), dtype=bool)
-        
+
         # Calculate total accessible cells (non-wall cells)
-        self.total_accessible_cells = grid_size * grid_size - np.sum(self.space.wall_grid)
+        self.total_accessible_cells = num_cells_x * num_cells_y - np.sum(self.space.wall_grid)
 
         # Update DataCollector
         self.datacollector = DataCollector(
@@ -162,7 +172,8 @@ class SwarmExplorerModel(Model):
                     break
 
         # Precompute the coverage offsets for the shared vision range
-        vision_grid_range = int(self.vision_range * self.grid_size / self.width)
+        vision_grid_range = int(self.vision_range * min(self.space.num_cells_x / self.width, 
+                                                       self.space.num_cells_y / self.height))
         r = np.arange(-vision_grid_range, vision_grid_range + 1)
         dx, dy = np.meshgrid(r, r, indexing='xy')
         circle_mask = (dx**2 + dy**2) <= vision_grid_range**2
@@ -222,7 +233,6 @@ class SwarmExplorerModel(Model):
 
     def step(self):
         """Advance the model by one step using vectorized updates for robots."""
-        # Update coverage (as before, if needed)
         for agent in self.agents:
             if isinstance(agent, RobotAgent):
                 x, y = agent.pos
@@ -230,32 +240,24 @@ class SwarmExplorerModel(Model):
                 
                 # Compute the absolute grid coordinates to update
                 grid_positions = self.coverage_offsets + np.array([grid_x, grid_y])
-                x_coords = grid_positions[:, 0]
-                y_coords = grid_positions[:, 1]
-                
-                # Filter positions that fall outside the grid boundaries
-                valid_mask = (
-                    (x_coords >= 0) & (x_coords < self.grid_size) &
-                    (y_coords >= 0) & (y_coords < self.grid_size)
-                )
-                x_coords = x_coords[valid_mask]
-                y_coords = y_coords[valid_mask]
-                
-                # Further filter out cells that are walls by checking the wall grid
+                x_coords = np.clip(grid_positions[:, 0], 0, self.space.num_cells_x - 1)
+                y_coords = np.clip(grid_positions[:, 1], 0, self.space.num_cells_y - 1)
+
+                # Access both grids consistently with [y, x]
                 not_wall = ~self.space.wall_grid[y_coords, x_coords]
                 x_coords = x_coords[not_wall]
                 y_coords = y_coords[not_wall]
-                
+
                 # Check line of sight for each valid position
-                visible_mask = np.array([
-                    self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid)
-                    for x, y in zip(x_coords, y_coords)
-                ])
-                x_coords = x_coords[visible_mask]
-                y_coords = y_coords[visible_mask]
+                # visible_mask = np.array([
+                #     self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid)
+                #     for x, y in zip(x_coords, y_coords)
+                # ])
+                # x_coords = x_coords[visible_mask]
+                # y_coords = y_coords[visible_mask]
                 # --------------------------------------------
-                
-                # Mark these positions as covered
+
+                # Mark coverage consistently with [y, x]
                 self.coverage_grid[y_coords, x_coords] = True
 
         # Step any remaining agents that don't get handled in the vectorized update.
