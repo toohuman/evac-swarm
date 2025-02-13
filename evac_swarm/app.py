@@ -52,7 +52,17 @@ def post_process_space(ax, model):
     Instead of clearing the entire axes (which resets the view), we remove existing wall patches.
     Then we re-draw the walls and re-apply the axis limits.
     """
-
+    # Display the coverage grid as a semi-transparent overlay, behind other layers.
+    if hasattr(model, "coverage_grid"):
+         ax.imshow(
+             model.coverage_grid,
+             extent=[0, model.width, 0, model.height],
+             origin="lower",
+             cmap="Greens",
+             alpha=0.3,
+             zorder=0
+         )
+    
     # Draw walls as rectangles using the latest wall specifications:
     for wall_spec in model.space.wall_specs:
         x = wall_spec['x'] - wall_spec['width'] / 2
@@ -66,10 +76,28 @@ def post_process_space(ax, model):
             alpha=0.8
         )
         ax.add_patch(rect)
+    
+    # Draw vision/communication range for each RobotAgent.
+    if model.show_vision_range:
+        for agent in model.agents:
+            if isinstance(agent, RobotAgent):
+                x, y = agent.pos
+                # Create a circle patch with radius equal to the agent's vision range.
+                vision_circle = patches.Circle(
+                    (x, y),
+                    agent.vision_range,
+                    fill=False,
+                    edgecolor='black',
+                    linestyle='--',
+                    linewidth=1,
+                    alpha=0.5
+                )
+                ax.add_patch(vision_circle)
 
-    # Reinstate the axis limits so the view stays correct.
+    # Reinstate the axis limits and enforce an equal aspect ratio so circles appear round.
     ax.set_xlim(0, model.width)
     ax.set_ylim(0, model.height)
+    ax.set_aspect("equal", adjustable="box")
     ax.set_xticks([])
     ax.set_yticks([])
 
@@ -90,6 +118,17 @@ model_params = {
         "value": False,
         "label": "Use Fixed Seed",
     },
+    "move_behaviour": {
+        "type": "Select",
+        "value": "random",
+        "values": ["random", "disperse"],
+        "label": "Movement Behaviour"
+    },
+    "show_vision_range": {
+        "type": "Checkbox",
+        "value": True,
+        "label": "Show Vision Range",
+    },
     "width": {
         'type': "InputText",
         'value': 40,
@@ -106,10 +145,10 @@ model_params = {
         'value': 6,
         'label': "Minimum Room Size"
     },
-    "wall_thickness": Slider("Wall Thickness", 0.3, 0.1, 0.8, step=0.01),
+    "wall_thickness": Slider("Wall Thickness", 0.5, 0.1, 0.8, step=0.01),
     "robot_count": Slider("Robots", 20, 1, 50),
     "casualty_count": Slider("Casualties", 3, 1, 10),
-    "vision_range": Slider("Vision Range", 3, 1, 10),
+    "vision_range": Slider("Vision Range", 2, 1, 10),
 }
 
 # Create a simulator that will re-instantiate the model on reset.

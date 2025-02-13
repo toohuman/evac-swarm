@@ -48,7 +48,9 @@ class SwarmExplorerModel(Model):
         min_room_size=11,
         wall_thickness=0.3,
         vision_range=3,
+        move_behaviour="random",
         grid_size=100,
+        show_vision_range=True,
         seed=None,
         use_seed=False,
         simulator: ABMSimulator = None,
@@ -70,8 +72,10 @@ class SwarmExplorerModel(Model):
         self.robot_count = int(robot_count)
         self.casualty_count = int(casualty_count)
         self.vision_range = int(vision_range)
+        self.move_behaviour = move_behaviour
         self.grid_size = grid_size
-
+        self.show_vision_range = show_vision_range
+        
         self.simulator = simulator
         if self.simulator is not None:
             self.simulator.setup(self)  # Ensure the simulator is set up on the model instance.
@@ -133,7 +137,12 @@ class SwarmExplorerModel(Model):
         
         # Place Robot agents at the entry point.
         for _ in range(self.robot_count):
-            robot = RobotAgent(self._next_id, self, pos=self.entry_point, vision_range=self.vision_range)
+            robot = RobotAgent(
+                self._next_id,
+                self, # model
+                vision_range=self.vision_range,
+                move_behaviour=self.move_behaviour
+            )
             self._next_id += 1
             self.register_agent(robot)
             self.space.place_agent(robot, self.entry_point)  # Continuous coordinates
@@ -153,7 +162,7 @@ class SwarmExplorerModel(Model):
                     break
 
         # Precompute the coverage offsets for the shared vision range
-        vision_grid_range = int(vision_range * grid_size / width)
+        vision_grid_range = int(self.vision_range * self.grid_size / self.width)
         r = np.arange(-vision_grid_range, vision_grid_range + 1)
         dx, dy = np.meshgrid(r, r, indexing='xy')
         circle_mask = (dx**2 + dy**2) <= vision_grid_range**2

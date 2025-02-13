@@ -11,7 +11,7 @@ class RobotAgent(Agent):
     """
     A robot agent that can move in 360° directions, avoid collisions and detect casualties.
     """
-    def __init__(self, unique_id, model, pos, vision_range, radius=0.3):
+    def __init__(self, unique_id, model, vision_range=2.0, radius=0.3, move_behaviour="random"):
         Agent.__init__(self, model)
         self.unique_id = unique_id
         self.orientation = self.model.random.uniform(0, 360)  # In degrees
@@ -23,36 +23,86 @@ class RobotAgent(Agent):
         self.move_speed = 0.3/2
         self.turn_speed = 8
 
-    def move_forward(self, distance):
-        """Move the robot forward by a specified distance."""
+        self.move_behaviour = move_behaviour
+
+    def attempt_move(self, distance):
+        """Move the robot forward by a specified distance if no collision occurs."""
         rad = math.radians(self.orientation)
         new_x = self.pos[0] + distance * math.cos(rad)
         new_y = self.pos[1] + distance * math.sin(rad)
         new_pos = (new_x, new_y)
-        
+
         if not self.detect_collision_fast(new_pos):
             self.model.space.move_agent(self, new_pos)
             self.pos = new_pos
 
-    def turn_left(self, angle):
-        """Turn the robot left by a specified angle."""
-        self.orientation = (self.orientation - angle) % 360
+    def limit_turn(self, desired_angle):
+        """
+        Limit the change in angle from current_angle to desired_angle to at most max_change degrees.
+        Angles are in degrees.
+        """
+        # Compute the smallest difference in the range [-180, 180]
+        diff = (desired_angle - self.orientation + 180) % 360 - 180
+        if diff > self.turn_speed:
+            diff = self.turn_speed
+        elif diff < -self.turn_speed:
+            diff = -self.turn_speed
+        # Return the updated orientation.
+        return (self.orientation + diff) % 360
 
-    def turn_right(self, angle):
-        """Turn the robot right by a specified angle."""
-        self.orientation = (self.orientation + angle) % 360
+    def disperse(self, neighbour_radius=3.0):
+        """
+        Adjust the agent's orientation to move away from nearby robots.
 
-    def step(self):
-        # Brownian motion style update:
-        # Instead of choosing a fixed left/right turn, update the orientation with
-        # a small random change sampled from a normal distribution.
+        Parameters:
+            neighbour_radius: the distance within which neighbours affect the dispersion.
+        """
+        # Get nearby robot agents (excluding itself)
+        neighbours = self.model.space.get_neighbors(self.pos, neighbour_radius, include_center=True)
+        if not neighbours:
+            return
+
+        repulsion = np.array([0.0, 0.0])
+        for nbr in neighbours:
+            if isinstance(nbr, RobotAgent) and nbr.unique_id != self.unique_id:
+                vector = np.array(self.pos) - np.array(nbr.pos)
+                # If the robots are extremely close (or in the same spot), apply a small random nudge:
+                if np.linalg.norm(vector) < 1e-5:
+                    vector = np.array([self.model.random.uniform(-0.1, 0.1),
+                                         self.model.random.uniform(-0.1, 0.1)])
+                # Weight by inverse-square distance to emphasise closer neighbours
+                distance = np.linalg.norm(vector) + 1e-6
+                repulsion += vector / (distance ** 2)
+
+        # If repulsion vector has magnitude, compute the desired angle.
+        if np.linalg.norm(repulsion) > 0:
+            desired_angle = np.degrees(np.arctan2(repulsion[1], repulsion[0]))
+            # Limit the angle change to self.turn_speed (or another maximum)
+            self.orientation = self.limit_turn(desired_angle)
+            # Attempt to move with the new orientation at self.move_speed
+            self.attempt_move(self.move_speed)
+        else:
+            self.random_exploration()
+
+    def random_exploration(self):
+        """
+        Execute a random (Brownian motion style) exploration.
+        """
+        # Generate a small random change in angle.
         delta_angle = self.model.random.gauss(0, self.turn_speed)
         self.orientation = (self.orientation + delta_angle) % 360
 
-        # Move forward by a fixed step length.
-        self.move_forward(self.move_speed)
-        
-        # Attempt to detect casualties within vision_range.
+        # Attempt to move forward by self.move_speed if there is no collision.
+        self.attempt_move(self.move_speed)
+
+    def step(self):
+        # Choose the movement behavior based on the current mode.
+        if self.move_behaviour == "disperse":
+            self.disperse()
+        else:
+            self.random_exploration()
+
+        # After moving, attempt to detect casualties.
         self.detect_casualties()
 
     def detect_collision(self, new_pos):
@@ -120,54 +170,6 @@ class RobotAgent(Agent):
                     # Report casualty by adding its position
                     self.reported_casualties.add(agent.pos)
                     agent.discovered = True
-
-    def disperse(self, neighbour_radius=2.0):
-        """
-        Adjust the agent's orientation to move away from nearby robots.
-
-        Parameters:
-            neighbour_radius: the distance within which neighbours affect the dispersion.
-        """
-        # Get nearby robot agents (excluding itself)
-        neighbours = self.model.space.get_neighbors(self.pos, neighbour_radius, include_center=False)
-        if not neighbours:
-            return
-
-        repulsion = np.array([0.0, 0.0])
-        for nbr in neighbours:
-            # Only consider other robots for dispersion.
-            if isinstance(nbr, RobotAgent) and nbr.unique_id != self.unique_id:
-                # Compute the vector from the neighbour to self.
-                vector = np.array(self.pos) - np.array(nbr.pos)
-                # Weight by inverse-square distance to emphasise closer neighbours.
-                distance = np.linalg.norm(vector) + 1e-6  # avoid division by zero
-                repulsion += vector / (distance ** 2)
-
-        # If repulsion vector has magnitude, compute the desired angle.
-        if np.linalg.norm(repulsion) > 0:
-            desired_angle = np.degrees(np.arctan2(repulsion[1], repulsion[0]))
-            # Limit the angle change to self.turn_speed (or another maximum)
-            self.orientation = self.limit_turn(desired_angle)
-
-    def move(self, new_position):
-        """Move to new position if there's no wall there."""
-        x, y = new_position
-        if not self.model.space.is_wall_at(x, y):
-            self.model.space.move_agent(self, new_position)
-
-    def limit_turn(self, desired_angle):
-        """
-        Limit the change in angle from current_angle to desired_angle to at most max_change degrees.
-        Angles are in degrees.
-        """
-        # Compute the smallest difference in the range [-180, 180]
-        diff = (desired_angle - self.orientation + 180) % 360 - 180
-        if diff > self.turn_speed:
-            diff = self.turn_speed
-        elif diff < -self.turn_speed:
-            diff = -self.turn_speed
-        # Return the updated orientation.
-        return (self.orientation + diff) % 360
 
 class WallAgent(Agent):
     """

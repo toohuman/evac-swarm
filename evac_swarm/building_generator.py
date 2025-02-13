@@ -3,8 +3,8 @@ import matplotlib.patches as patches
 
 def generate_building_layout(
     width, height,
-    min_room_size=3,
-    wall_thickness=0.3,
+    min_room_size=4,
+    wall_thickness=0.5,
     rng=None
 ):
     """
