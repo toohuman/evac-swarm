@@ -1,4 +1,4 @@
-# Robot Swarm Explorer
+# EvacSwarm: Evacuation Swarm
 
 A simulation of autonomous robot swarms exploring buildings to locate casualties following natural disasters. Built using Mesa (an agent-based modelling framework) and Solara for interactive visualisation.
 
