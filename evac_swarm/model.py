@@ -103,16 +103,6 @@ class SwarmExplorerModel(Model):
             self.wall_thickness,
             rng=self.random  # Use new seed for building
         )
-
-        # Calculate total accessible cells (non-wall cells)
-        self.total_accessible_cells = num_cells_x * num_cells_y - np.sum(self.space.wall_grid)
-
-        # Update DataCollector
-        self.datacollector = DataCollector(
-            model_reporters={
-                "Coverage": lambda m: (np.sum(m.coverage_grid == 1) / m.total_accessible_cells) * 100
-            }
-        )
         
         self._next_id = 0  # Add counter for agent IDs
         
@@ -126,6 +116,16 @@ class SwarmExplorerModel(Model):
         
         # Mark wall cells in the coverage grid with -1 so they are not counted as accessible.
         self.coverage_grid[self.space.wall_grid] = -1
+        
+        # Recalculate total accessible cells (non-wall cells) AFTER walls have been added.
+        self.total_accessible_cells = self.coverage_grid.size - np.sum(self.space.wall_grid)
+
+        # Update DataCollector
+        self.datacollector = DataCollector(
+            model_reporters={
+                "Coverage": lambda m: (np.sum(m.coverage_grid == 1) / m.total_accessible_cells) * 100
+            }
+        )
         
         # Build an R-tree spatial index for the wall agents.
         # Assume wall_agent.unique_id is unique.
@@ -181,8 +181,9 @@ class SwarmExplorerModel(Model):
                     break
 
         # Precompute the coverage offsets for the shared vision range
-        vision_grid_range = int(self.vision_range * min(self.space.num_cells_x / self.width, 
-                                                       self.space.num_cells_y / self.height))
+        # Use np.ceil to ensure that the discrete grid vision range fully covers the continuous vision range.
+        vision_grid_range = int(np.ceil(self.vision_range * min(self.space.num_cells_x / self.width, 
+                                                                self.space.num_cells_y / self.height)))
         r = np.arange(-vision_grid_range, vision_grid_range + 1)
         dx, dy = np.meshgrid(r, r, indexing='xy')
         circle_mask = (dx**2 + dy**2) <= vision_grid_range**2
