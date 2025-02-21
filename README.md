@@ -68,8 +68,8 @@ evac_swarm/
 
 ## Requirements
 
-- Python 3.9 or higher
-- Mesa 2.1.1 or higher (agent-based modelling)
+- Python 3.13 or higher
+- Mesa 3.1.3 or higher (agent-based modelling)
 - Solara 1.21.0 or higher (web interface)
 - NumPy, SciPy (numerical computation)
 - Matplotlib (visualization)

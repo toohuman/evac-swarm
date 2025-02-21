@@ -8,7 +8,7 @@ from mesa.experimental.devs import ABMSimulator
 from scipy.ndimage import binary_dilation, distance_transform_edt
 from rtree import index
 
-from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent
+from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent, DeploymentAgent
 from evac_swarm.building_generator import generate_building_layout
 from evac_swarm.space import HybridSpace
 
@@ -92,7 +92,7 @@ class SwarmExplorerModel(Model):
 
         
         # Initialize both grids consistently as (rows, cols) or (y, x)
-        self.coverage_grid = np.zeros((num_cells_y, num_cells_x), dtype=bool)  # [y, x]
+        self.coverage_grid = np.zeros((num_cells_y, num_cells_x), dtype=np.int8)  # [y, x] (0 = not covered, 1 = covered, -1 = wall)
         self.space = HybridSpace(self.width, self.height, 
                                dims=(num_cells_y, num_cells_x), torus=False)  # Pass as (y, x)
         
@@ -110,7 +110,7 @@ class SwarmExplorerModel(Model):
         # Update DataCollector
         self.datacollector = DataCollector(
             model_reporters={
-                "Coverage": lambda m: (np.sum(m.coverage_grid) / m.total_accessible_cells) * 100
+                "Coverage": lambda m: (np.sum(m.coverage_grid == 1) / m.total_accessible_cells) * 100
             }
         )
         
@@ -123,6 +123,9 @@ class SwarmExplorerModel(Model):
             wall_agent = WallAgent(self._next_id, self, wall_spec=wall)
             self._next_id += 1
             self.register_agent(wall_agent)
+        
+        # Mark wall cells in the coverage grid with -1 so they are not counted as accessible.
+        self.coverage_grid[self.space.wall_grid] = -1
         
         # Build an R-tree spatial index for the wall agents.
         # Assume wall_agent.unique_id is unique.
@@ -145,11 +148,17 @@ class SwarmExplorerModel(Model):
         # We assume the entry is at the centre of the bottom wall.
         self.entry_point = (self.width / 2, 1 + self.wall_thickness)
         
+        # Add a DeploymentAgent at the entry point.
+        deployment_agent = DeploymentAgent(self._next_id, self, self.entry_point)
+        self._next_id += 1
+        self.register_agent(deployment_agent)
+        self.space.place_agent(deployment_agent, self.entry_point)
+        
         # Place Robot agents at the entry point.
         for _ in range(self.robot_count):
             robot = RobotAgent(
                 self._next_id,
-                self, # model
+                self,  # model
                 vision_range=self.vision_range,
                 move_behaviour=self.move_behaviour
             )
@@ -258,7 +267,7 @@ class SwarmExplorerModel(Model):
                 # --------------------------------------------
 
                 # Mark coverage consistently with [y, x]
-                self.coverage_grid[y_coords, x_coords] = True
+                self.coverage_grid[y_coords, x_coords] = 1
 
         # Step any remaining agents that don't get handled in the vectorized update.
         for agent in self.agents:

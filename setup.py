@@ -5,7 +5,7 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
-        "mesa>=2.1.1",
+        "mesa>=3.1.1",
         "numpy>=1.24.0",
         "matplotlib>=3.7.0",
         "scipy>=1.10.0",

@@ -196,4 +196,18 @@ class CasualtyAgent(Agent):
     
     def step(self):
         # Casualties do not move.
+        pass
+
+class DeploymentAgent(Agent):
+    """
+    A deployment agent that acts as a communication hub for robot agents.
+    """
+    def __init__(self, unique_id, model, pos):
+        Agent.__init__(self, model)
+        self.unique_id = unique_id
+        self.pos = pos
+
+    def step(self):
+        # Deployment agent does not move or contribute to coverage.
+        # It can communicate with robot agents if needed.
         pass 

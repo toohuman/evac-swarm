@@ -1,4 +1,4 @@
-from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent
+from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent, DeploymentAgent
 from evac_swarm.model import SwarmExplorerModel
 from mesa.visualization import SolaraViz, Slider
 from mesa.visualization.components import make_space_component, make_plot_component
@@ -8,12 +8,14 @@ import matplotlib.patches as patches
 from mesa.experimental.devs import ABMSimulator
 from functools import partial
 import matplotlib as mpl
+from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # Global mapping of species to their colours
 COLOR_MAPPING = {
     "Robot": "#9467bd",
     "Casualty": {"default": "#d62728", "discovered": "#2ca02c"},
-    "Wall": "grey"
+    "Wall": "grey",
+    "Deployment": "#1f77b4"  # Add a colour for the DeploymentAgent
 }
 
 def agent_portrayal(agent):
@@ -43,6 +45,13 @@ def agent_portrayal(agent):
             "size": 50
         }
 
+    elif isinstance(agent, DeploymentAgent):
+        return {
+            "color": COLOR_MAPPING["Deployment"],
+            "marker": "D",  # Diamond marker
+            "size": 100  # Fixed size for visibility
+        }
+
 def post_process_with_sim(ax, sim):
     return post_process_space(ax, sim.model)
 
@@ -54,14 +63,19 @@ def post_process_space(ax, model):
     """
     # Display the coverage grid as a semi-transparent overlay, behind other layers.
     if hasattr(model, "coverage_grid"):
-         ax.imshow(
-             model.coverage_grid,
-             extent=[0, model.width, 0, model.height],
-             origin="lower",
-             cmap="Greens",
-             alpha=0.3,
-             zorder=0
-         )
+        # Create a custom colormap that maps:
+        #   -1 (wall) -> black, 0 (not visited) -> black, 1 (visited) -> white.
+        cmap = ListedColormap(['black', '#333333', 'white'])
+        norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5], cmap.N)
+        ax.imshow(
+            model.coverage_grid,
+            extent=[0, model.width, 0, model.height],
+            origin="lower",
+            cmap=cmap,
+            norm=norm,
+            alpha=1.0,
+            zorder=0
+        )
     
     # Draw walls as rectangles using the latest wall specifications:
     for wall_spec in model.space.wall_specs:
