@@ -9,6 +9,7 @@ from scipy.ndimage import binary_dilation, distance_transform_edt
 from rtree import index
 
 from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent, DeploymentAgent
+from evac_swarm.agents import reset_agent_id_counter
 from evac_swarm.building_generator import generate_building_layout
 from evac_swarm.space import HybridSpace
 
@@ -55,6 +56,8 @@ class SwarmExplorerModel(Model):
         use_seed=False,
         simulator: ABMSimulator = None,
     ):
+        reset_agent_id_counter()
+
         if type(seed) == dict:
             seed = seed['value']
         if not use_seed:
@@ -104,14 +107,11 @@ class SwarmExplorerModel(Model):
             rng=self.random  # Use new seed for building
         )
         
-        self._next_id = 0  # Add counter for agent IDs
-        
         # Add walls to both representations
         for wall in wall_layout:
             self.space.add_wall(wall)
             # Create a WallAgent for each wall
-            wall_agent = WallAgent(self._next_id, self, wall_spec=wall)
-            self._next_id += 1
+            wall_agent = WallAgent(self, wall_spec=wall)
             self.register_agent(wall_agent)
         
         # Mark wall cells in the coverage grid with -1 so they are not counted as accessible.
@@ -149,20 +149,17 @@ class SwarmExplorerModel(Model):
         self.entry_point = (self.width / 2, 1 + self.wall_thickness)
         
         # Add a DeploymentAgent at the entry point.
-        deployment_agent = DeploymentAgent(self._next_id, self, self.entry_point)
-        self._next_id += 1
+        deployment_agent = DeploymentAgent(self)
         self.register_agent(deployment_agent)
         self.space.place_agent(deployment_agent, self.entry_point)
         
         # Place Robot agents at the entry point.
         for _ in range(self.robot_count):
             robot = RobotAgent(
-                self._next_id,
                 self,  # model
                 vision_range=self.vision_range,
                 move_behaviour=self.move_behaviour
             )
-            self._next_id += 1
             self.register_agent(robot)
             self.space.place_agent(robot, self.entry_point)  # Continuous coordinates
             
@@ -174,8 +171,7 @@ class SwarmExplorerModel(Model):
                     self.random.uniform(self.wall_thickness, self.height - self.wall_thickness)
                 )
                 if not any(self._point_in_wall(pos, spec) for spec in wall_layout):
-                    casualty = CasualtyAgent(self._next_id, self, pos)
-                    self._next_id += 1
+                    casualty = CasualtyAgent(self)
                     self.register_agent(casualty)
                     self.space.place_agent(casualty, pos)
                     break

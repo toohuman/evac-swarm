@@ -3,6 +3,20 @@ import random
 import numpy as np
 from mesa import Agent
 
+# At the top of the file, define a global counter and helper function.
+GLOBAL_AGENT_ID = 0
+
+def get_next_agent_id():
+    global GLOBAL_AGENT_ID
+    next_id = GLOBAL_AGENT_ID
+    GLOBAL_AGENT_ID += 1
+    return next_id
+
+# NEW: Helper function to reset the global agent counter.
+def reset_agent_id_counter():
+    global GLOBAL_AGENT_ID
+    GLOBAL_AGENT_ID = 0
+    
 # A small helper function for distance calculation
 def euclidean_distance(a, b):
     return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
@@ -11,10 +25,10 @@ class RobotAgent(Agent):
     """
     A robot agent that can move in 360° directions, avoid collisions and detect casualties.
     """
-    def __init__(self, unique_id, model, vision_range=2.0, radius=0.3, move_behaviour="random"):
+    def __init__(self, model, vision_range=2.0, radius=0.3, move_behaviour="random"):
         Agent.__init__(self, model)
-        self.unique_id = unique_id
-        self.orientation = self.model.random.uniform(0, 360)  # In degrees
+        self.unique_id = get_next_agent_id()
+        self.orientation = model.random.uniform(0, 360)  # In degrees
         self.vision_range = vision_range
         self.radius = radius
         # A set to store aggregated casualty reports (e.g. positions)
@@ -175,9 +189,9 @@ class WallAgent(Agent):
     """
     A wall agent representing an impassable structure.
     """
-    def __init__(self, unique_id, model, wall_spec):
+    def __init__(self, model, wall_spec):
         Agent.__init__(self, model)
-        self.unique_id = unique_id
+        self.unique_id = get_next_agent_id()
         self.wall_spec = wall_spec  # a dict with x, y, width, height
         
     def step(self):
@@ -189,9 +203,9 @@ class CasualtyAgent(Agent):
     """
     A casualty agent. Static until detected.
     """
-    def __init__(self, unique_id, model, pos):
+    def __init__(self, model):
         Agent.__init__(self, model)
-        self.unique_id = unique_id
+        self.unique_id = get_next_agent_id()
         self.discovered = False
     
     def step(self):
@@ -202,10 +216,9 @@ class DeploymentAgent(Agent):
     """
     A deployment agent that acts as a communication hub for robot agents.
     """
-    def __init__(self, unique_id, model, pos):
+    def __init__(self, model):
         Agent.__init__(self, model)
-        self.unique_id = unique_id
-        self.pos = pos
+        self.unique_id = get_next_agent_id()
 
     def step(self):
         # Deployment agent does not move or contribute to coverage.

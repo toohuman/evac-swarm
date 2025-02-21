@@ -65,7 +65,7 @@ def post_process_space(ax, model):
     if hasattr(model, "coverage_grid"):
         # Create a custom colormap that maps:
         #   -1 (wall) -> black, 0 (not visited) -> black, 1 (visited) -> white.
-        cmap = ListedColormap(['black', '#333333', 'white'])
+        cmap = ListedColormap(['black', '#111111', 'white'])
         norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5], cmap.N)
         ax.imshow(
             model.coverage_grid,
