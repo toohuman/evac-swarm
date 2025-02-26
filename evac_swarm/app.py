@@ -191,6 +191,9 @@ model_params = {
         "label": "Show Vision Range",
     },
     "comm_timeout": Slider("Communication Timeout", 15, 5, 50, step=5),
+    "robot_count": Slider("Robots", 20, 1, 50),
+    "casualty_count": Slider("Casualties", 3, 1, 10),
+    "vision_range": Slider("Vision Range", 2, 1, 10),
     "width": {
         'type': "InputText",
         'value': 40,
@@ -208,9 +211,6 @@ model_params = {
         'label': "Minimum Room Size"
     },
     "wall_thickness": Slider("Wall Thickness", 0.5, 0.1, 0.8, step=0.01),
-    "robot_count": Slider("Robots", 20, 1, 50),
-    "casualty_count": Slider("Casualties", 3, 1, 10),
-    "vision_range": Slider("Vision Range", 2, 1, 10),
 }
 
 # Create a simulator that will re-instantiate the model on reset.
@@ -234,7 +234,7 @@ space = make_space_component(
     )
 
 coverage_chart = make_plot_component(
-    "Coverage",
+    ["Coverage", "DeploymentCoverage"],  # Explicitly include both metrics
     backend="matplotlib",
     post_process=post_process_coverage
 )

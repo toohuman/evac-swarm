@@ -259,7 +259,7 @@ class SwarmExplorerModel(Model):
                 
                 # Check visibility for batch (still requires loop but much smaller)
                 for x, y in zip(batch_x, batch_y):
-                    if self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid):
+                    if self.is_visible_vectorised((grid_x, grid_y), (x, y), self.space.wall_grid):
                         visibility_mask[y, x] = True
             
             # Store the visibility mask
@@ -272,7 +272,7 @@ class SwarmExplorerModel(Model):
         print(f"Visibility precomputation complete: {processed} cells processed")
         return visibility_matrix
     
-    def _is_visible_vectorized(self, start, end, wall_grid):
+    def is_visible_vectorised(self, start, end, wall_grid):
         """
         Determines if the line from start to end is clear of walls.
         
@@ -340,7 +340,7 @@ class SwarmExplorerModel(Model):
 
                 # Check line of sight for each valid position
                 # visible_mask = np.array([
-                #     self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid)
+                #     self.is_visible_vectorised((grid_x, grid_y), (x, y), self.space.wall_grid)
                 #     for x, y in zip(x_coords, y_coords)
                 # ])
                 # x_coords = x_coords[visible_mask]

@@ -131,7 +131,7 @@ class RobotAgent(Agent):
                 grid_self_x, grid_self_y = self.model.space.continuous_to_grid(*self.pos)
                 
                 # Only proceed if we have line of sight (optional, can disable this check)
-                if self.model._is_visible_vectorized(
+                if self.model.is_visible_vectorised(
                     (grid_self_x, grid_self_y),
                     (grid_agent_x, grid_agent_y),
                     self.model.space.wall_grid
@@ -146,7 +146,7 @@ class RobotAgent(Agent):
                 grid_agent_x, grid_agent_y = self.model.space.continuous_to_grid(*agent_pos)
                 grid_self_x, grid_self_y = self.model.space.continuous_to_grid(*self.pos)
                 
-                if self.model._is_visible_vectorized(
+                if self.model.is_visible_vectorised(
                     (grid_self_x, grid_self_y),
                     (grid_agent_x, grid_agent_y),
                     self.model.space.wall_grid
