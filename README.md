@@ -59,11 +59,11 @@ This will launch the simulation interface at http://localhost:8765
 
 ### Project Structure
 
-evac_swarm/
-├── app.py # Solara web application
-├── model.py # Core simulation model
-├── agents.py # Robot, Wall, and Casualty agents
-├── space.py # Hybrid continuous/discrete space
+evac_swarm/\
+├── app.py # Solara web application\
+├── model.py # Core simulation model\
+├── agents.py # Robot, Wall, and Casualty agents\
+├── space.py # Hybrid continuous/discrete space\
 └── building_generator.py # Procedural building generation
 
 ## Requirements
