@@ -184,6 +184,9 @@ class SwarmExplorerModel(Model):
         dx, dy = np.meshgrid(r, r, indexing='xy')
         circle_mask = (dx**2 + dy**2) <= vision_grid_range**2
         self.coverage_offsets = np.stack((dx[circle_mask], dy[circle_mask]), axis=-1)
+        
+        # Precompute the visibility matrix for all grid cells
+        self.visibility_matrix = self._precompute_visibility_matrix(vision_grid_range)
 
         self.running = True
 
@@ -204,6 +207,62 @@ class SwarmExplorerModel(Model):
     #         if self.space.wall_grid[y, x]:
     #             return False
     #     return True
+    
+    def _precompute_visibility_matrix(self, vision_grid_range):
+        """
+        Precomputes a visibility matrix for all grid cells.
+        
+        For each grid cell, this function creates a binary mask of which cells 
+        within the vision range are visible (not blocked by walls).
+        
+        Returns:
+            Dictionary mapping (grid_x, grid_y) tuples to binary visibility masks.
+        """
+        visibility_matrix = {}
+        
+        # Get all non-wall cell positions at once (vectorized)
+        non_wall_y, non_wall_x = np.where(~self.space.wall_grid)
+        source_positions = list(zip(non_wall_x, non_wall_y))
+        
+        # For progress tracking
+        total_cells = len(source_positions)
+        processed = 0
+        
+        # Process each source position (still needs a loop)
+        for grid_x, grid_y in source_positions:
+            # Create visibility mask for this cell
+            visibility_mask = np.zeros((self.space.num_cells_y, self.space.num_cells_x), dtype=bool)
+            
+            # Add positions within vision range (vectorized)
+            range_positions = self.coverage_offsets + np.array([grid_x, grid_y])
+            valid_x = np.clip(range_positions[:, 0], 0, self.space.num_cells_x - 1)
+            valid_y = np.clip(range_positions[:, 1], 0, self.space.num_cells_y - 1)
+            
+            # Filter out wall positions (vectorized)
+            not_wall = ~self.space.wall_grid[valid_y, valid_x]
+            target_x = valid_x[not_wall]
+            target_y = valid_y[not_wall]
+            
+            # Process in batches to reduce memory usage while still being faster
+            batch_size = 100  # Adjust based on memory constraints
+            for i in range(0, len(target_x), batch_size):
+                batch_x = target_x[i:i+batch_size]
+                batch_y = target_y[i:i+batch_size]
+                
+                # Check visibility for batch (still requires loop but much smaller)
+                for x, y in zip(batch_x, batch_y):
+                    if self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid):
+                        visibility_mask[y, x] = True
+            
+            # Store the visibility mask
+            visibility_matrix[(grid_x, grid_y)] = visibility_mask
+            
+            processed += 1
+            if processed % 1000 == 0:
+                print(f"Precomputing visibility: {processed}/{total_cells} cells processed")
+        
+        print(f"Visibility precomputation complete: {processed} cells processed")
+        return visibility_matrix
     
     def _is_visible_vectorized(self, start, end, wall_grid):
         """
@@ -244,27 +303,15 @@ class SwarmExplorerModel(Model):
                 x, y = agent.pos
                 grid_x, grid_y = self.space.continuous_to_grid(x, y)
                 
-                # Compute the absolute grid coordinates to update
-                grid_positions = self.coverage_offsets + np.array([grid_x, grid_y])
-                x_coords = np.clip(grid_positions[:, 0], 0, self.space.num_cells_x - 1)
-                y_coords = np.clip(grid_positions[:, 1], 0, self.space.num_cells_y - 1)
-
-                # Access both grids consistently with [y, x]
-                not_wall = ~self.space.wall_grid[y_coords, x_coords]
-                x_coords = x_coords[not_wall]
-                y_coords = y_coords[not_wall]
-
-                # Check line of sight for each valid position
-                # visible_mask = np.array([
-                #     self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid)
-                #     for x, y in zip(x_coords, y_coords)
-                # ])
-                # x_coords = x_coords[visible_mask]
-                # y_coords = y_coords[visible_mask]
-                # --------------------------------------------
-
-                # Mark coverage consistently with [y, x]
-                self.coverage_grid[y_coords, x_coords] = 1
+                # Use precomputed visibility matrix to update coverage
+                if (grid_x, grid_y) in self.visibility_matrix:
+                    # Get the visibility mask for current position
+                    visibility_mask = self.visibility_matrix[(grid_x, grid_y)]
+                    
+                    # Update the coverage grid using the precomputed visibility mask
+                    # Only mark cells that weren't already covered
+                    uncovered_cells = (self.coverage_grid == 0) & visibility_mask
+                    self.coverage_grid[uncovered_cells] = 1
 
         # Step any remaining agents that don't get handled in the vectorized update.
         for agent in self.agents:
