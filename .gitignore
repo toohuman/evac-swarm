@@ -24,3 +24,7 @@ venv.bak/
 .idea/
 
 docs/
+
+# Claude Code
+CLAUDE.md
+package*.json
