@@ -186,7 +186,7 @@ class SwarmExplorerModel(Model):
         self.coverage_offsets = np.stack((dx[circle_mask], dy[circle_mask]), axis=-1)
         
         # Precompute the visibility matrix for all grid cells
-        self.visibility_matrix = self._precompute_visibility_matrix(vision_grid_range)
+        # self.visibility_matrix = self._precompute_visibility_matrix(vision_grid_range)
 
         self.running = True
 
@@ -303,15 +303,27 @@ class SwarmExplorerModel(Model):
                 x, y = agent.pos
                 grid_x, grid_y = self.space.continuous_to_grid(x, y)
                 
-                # Use precomputed visibility matrix to update coverage
-                if (grid_x, grid_y) in self.visibility_matrix:
-                    # Get the visibility mask for current position
-                    visibility_mask = self.visibility_matrix[(grid_x, grid_y)]
-                    
-                    # Update the coverage grid using the precomputed visibility mask
-                    # Only mark cells that weren't already covered
-                    uncovered_cells = (self.coverage_grid == 0) & visibility_mask
-                    self.coverage_grid[uncovered_cells] = 1
+                # Compute the absolute grid coordinates to update
+                grid_positions = self.coverage_offsets + np.array([grid_x, grid_y])
+                x_coords = np.clip(grid_positions[:, 0], 0, self.space.num_cells_x - 1)
+                y_coords = np.clip(grid_positions[:, 1], 0, self.space.num_cells_y - 1)
+
+                # Access both grids consistently with [y, x]
+                not_wall = ~self.space.wall_grid[y_coords, x_coords]
+                x_coords = x_coords[not_wall]
+                y_coords = y_coords[not_wall]
+
+                # Check line of sight for each valid position
+                # visible_mask = np.array([
+                #     self._is_visible_vectorized((grid_x, grid_y), (x, y), self.space.wall_grid)
+                #     for x, y in zip(x_coords, y_coords)
+                # ])
+                # x_coords = x_coords[visible_mask]
+                # y_coords = y_coords[visible_mask]
+                # --------------------------------------------
+
+                # Mark coverage consistently with [y, x]
+                self.coverage_grid[y_coords, x_coords] = 1
 
         # Step any remaining agents that don't get handled in the vectorized update.
         for agent in self.agents:
