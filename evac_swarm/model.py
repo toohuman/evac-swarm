@@ -123,7 +123,8 @@ class SwarmExplorerModel(Model):
         # Update DataCollector
         self.datacollector = DataCollector(
             model_reporters={
-                "Coverage": lambda m: (np.sum(m.coverage_grid == 1) / m.total_accessible_cells) * 100
+                "Coverage": lambda m: (np.sum(m.coverage_grid == 1) / m.total_accessible_cells) * 100,
+                "DeploymentCoverage": lambda m: m.get_deployment_coverage_percentage()
             }
         )
         
@@ -150,6 +151,8 @@ class SwarmExplorerModel(Model):
         
         # Add a DeploymentAgent at the entry point.
         deployment_agent = DeploymentAgent(self)
+        # Initialize its global coverage map with the right dimensions
+        deployment_agent.initialize_coverage_map((self.space.num_cells_y, self.space.num_cells_x))
         self.register_agent(deployment_agent)
         self.space.place_agent(deployment_agent, self.entry_point)
         
@@ -158,8 +161,12 @@ class SwarmExplorerModel(Model):
             robot = RobotAgent(
                 self,  # model
                 vision_range=self.vision_range,
-                move_behaviour=self.move_behaviour
+                move_behaviour=self.move_behaviour,
+                comm_timeout=15  # Default timeout - can be adjusted
             )
+            # Initialize personal coverage grid for the robot
+            robot.personal_coverage = np.zeros((self.space.num_cells_y, self.space.num_cells_x), dtype=bool)
+            
             self.register_agent(robot)
             self.space.place_agent(robot, self.entry_point)  # Continuous coordinates
             
@@ -296,6 +303,23 @@ class SwarmExplorerModel(Model):
         return not np.any(cells_along_line)
 
 
+    def get_deployment_agent(self):
+        """Get the deployment agent from the model"""
+        for agent in self.agents:
+            if isinstance(agent, DeploymentAgent):
+                return agent
+        return None
+    
+    def get_deployment_coverage_percentage(self):
+        """Calculate the percentage of coverage known to the deployment agent"""
+        deployment_agent = self.get_deployment_agent()
+        if deployment_agent and deployment_agent.global_coverage is not None:
+            # Count cells covered in deployment agent's view (excluding walls)
+            covered_cells = np.sum(deployment_agent.global_coverage)
+            # Calculate percentage based on accessible cells
+            return (covered_cells / self.total_accessible_cells) * 100
+        return 0.0
+    
     def step(self):
         """Advance the model by one step using vectorized updates for robots."""
         for agent in self.agents:
@@ -329,5 +353,5 @@ class SwarmExplorerModel(Model):
         for agent in self.agents:
             agent.step()
 
-        # Collect data after updates.
+        # Collect data after updates, including deployment agent coverage
         self.datacollector.collect(self)

@@ -25,7 +25,7 @@ class RobotAgent(Agent):
     """
     A robot agent that can move in 360° directions, avoid collisions and detect casualties.
     """
-    def __init__(self, model, vision_range=2.0, radius=0.3, move_behaviour="random"):
+    def __init__(self, model, vision_range=2.0, radius=0.3, move_behaviour="random", comm_timeout=10):
         Agent.__init__(self, model)
         self.unique_id = get_next_agent_id()
         self.orientation = model.random.uniform(0, 360)  # In degrees
@@ -38,6 +38,15 @@ class RobotAgent(Agent):
         self.turn_speed = 8
 
         self.move_behaviour = move_behaviour
+        
+        # Communication parameters
+        self.comm_timeout = comm_timeout  # How many steps before needing to communicate
+        self.steps_since_comm = comm_timeout  # Start needing to communicate
+        self.comm_range = vision_range  # Communication range (same as vision by default)
+        
+        # Personal coverage map (will be synced during communication)
+        self.personal_coverage = None  # Will be initialized in the model
+        self.last_comm_partner = None  # Keep track of last agent communicated with
 
     def attempt_move(self, distance):
         """Move the robot forward by a specified distance if no collision occurs."""
@@ -109,15 +118,162 @@ class RobotAgent(Agent):
         # Attempt to move forward by self.move_speed if there is no collision.
         self.attempt_move(self.move_speed)
 
-    def step(self):
-        # Choose the movement behavior based on the current mode.
-        if self.move_behaviour == "disperse":
-            self.disperse()
+    def find_communication_partner(self):
+        """Find a nearby agent to communicate with, prioritizing other robots"""
+        nearby_agents = self.model.space.get_neighbors(self.pos, self.comm_range, include_center=False)
+        
+        # First check for other robots
+        for agent in nearby_agents:
+            if isinstance(agent, RobotAgent) and agent.unique_id != self.unique_id:
+                # Check if there's line of sight to this agent
+                agent_pos = agent.pos
+                grid_agent_x, grid_agent_y = self.model.space.continuous_to_grid(*agent_pos)
+                grid_self_x, grid_self_y = self.model.space.continuous_to_grid(*self.pos)
+                
+                # Only proceed if we have line of sight (optional, can disable this check)
+                if self.model._is_visible_vectorized(
+                    (grid_self_x, grid_self_y),
+                    (grid_agent_x, grid_agent_y),
+                    self.model.space.wall_grid
+                ):
+                    return agent
+        
+        # If no robot is found, check for the deployment agent
+        for agent in nearby_agents:
+            if isinstance(agent, DeploymentAgent):
+                # Check line of sight to deployment agent
+                agent_pos = agent.pos
+                grid_agent_x, grid_agent_y = self.model.space.continuous_to_grid(*agent_pos)
+                grid_self_x, grid_self_y = self.model.space.continuous_to_grid(*self.pos)
+                
+                if self.model._is_visible_vectorized(
+                    (grid_self_x, grid_self_y),
+                    (grid_agent_x, grid_agent_y),
+                    self.model.space.wall_grid
+                ):
+                    return agent
+        
+        return None
+    
+    def communicate(self, partner):
+        """Share coverage information with another agent"""
+        # Only perform data exchange if the partner is a robot
+        if isinstance(partner, RobotAgent):
+            # Combine coverage maps (logical OR)
+            if self.personal_coverage is not None and partner.personal_coverage is not None:
+                combined_coverage = np.logical_or(self.personal_coverage, partner.personal_coverage)
+                self.personal_coverage = combined_coverage.copy()
+                partner.personal_coverage = combined_coverage.copy()
+            
+            # Share casualty reports
+            self.reported_casualties.update(partner.reported_casualties)
+            partner.reported_casualties.update(self.reported_casualties)
+            
+            # Reset communication timer for both agents
+            self.steps_since_comm = 0
+            partner.steps_since_comm = 0
+            
+            # Update last communication partner
+            self.last_comm_partner = partner.unique_id
+            partner.last_comm_partner = self.unique_id
+            
+            return True
+        
+        # If communicating with deployment agent, bidirectional information exchange
+        elif isinstance(partner, DeploymentAgent):
+            # Exchange coverage information (bidirectional)
+            if self.personal_coverage is not None and partner.global_coverage is not None:
+                # Merge robot's coverage into deployment agent's global coverage
+                partner.global_coverage = np.logical_or(partner.global_coverage, self.personal_coverage)
+                # Also get updated coverage from deployment agent
+                self.personal_coverage = np.logical_or(self.personal_coverage, partner.global_coverage)
+            
+            # Exchange casualty reports
+            self.reported_casualties.update(partner.reported_casualties)
+            partner.reported_casualties.update(self.reported_casualties)
+            
+            # Add robot to reported list
+            partner.robots_reported.add(self.unique_id)
+            
+            # Reset communication timer
+            self.steps_since_comm = 0
+            self.last_comm_partner = partner.unique_id
+            return True
+            
+        return False
+    
+    def seek_communication(self):
+        """Behavior to seek out communication with other agents"""
+        # Find potential communication partners
+        partner = self.find_communication_partner()
+        
+        if partner:
+            # If partner found, communicate and don't move this step
+            self.communicate(partner)
+            return True
+        
+        # No partner in range, move toward deployment agent
+        deployment_x, deployment_y = self.model.entry_point
+        vector_to_deployment = np.array([deployment_x - self.pos[0], deployment_y - self.pos[1]])
+        
+        # Only navigate toward deployment if some distance away
+        if np.linalg.norm(vector_to_deployment) > 1.0:
+            # Set orientation toward deployment
+            desired_angle = np.degrees(np.arctan2(vector_to_deployment[1], vector_to_deployment[0]))
+            self.orientation = self.limit_turn(desired_angle)
+            self.attempt_move(self.move_speed)
         else:
+            # If close to deployment but no communication, random movement
             self.random_exploration()
-
-        # After moving, attempt to detect casualties.
+            
+        return False
+    
+    def step(self):
+        # Increment step counter since last communication
+        self.steps_since_comm += 1
+        
+        # Decide on behavior based on communication needs
+        if self.steps_since_comm >= self.comm_timeout:
+            # Need to communicate - prioritize finding a partner
+            communicated = self.seek_communication()
+            if communicated:
+                # Skip further movement this step if communication happened
+                pass
+            # If seeking communication but didn't find a partner, movement
+            # is already handled by seek_communication()
+        else:
+            # Normal exploration behavior
+            if self.move_behaviour == "disperse":
+                self.disperse()
+            else:
+                self.random_exploration()
+        
+        # After moving, update coverage and detect casualties
+        self.update_personal_coverage()
         self.detect_casualties()
+        
+    def update_personal_coverage(self):
+        """Update the agent's personal coverage map based on current position"""
+        if self.personal_coverage is None:
+            # Initialize personal coverage grid if not already done
+            self.personal_coverage = np.zeros((self.model.space.num_cells_y, self.model.space.num_cells_x), dtype=bool)
+        
+        # Update personal coverage based on current position
+        x, y = self.pos
+        grid_x, grid_y = self.model.space.continuous_to_grid(x, y)
+        
+        # Apply coverage offsets (similar to the model's coverage update)
+        grid_positions = self.model.coverage_offsets + np.array([grid_x, grid_y])
+        x_coords = np.clip(grid_positions[:, 0], 0, self.model.space.num_cells_x - 1)
+        y_coords = np.clip(grid_positions[:, 1], 0, self.model.space.num_cells_y - 1)
+        
+        # Filter out wall positions
+        not_wall = ~self.model.space.wall_grid[y_coords, x_coords]
+        x_coords = x_coords[not_wall]
+        y_coords = y_coords[not_wall]
+        
+        # Mark visible areas in personal coverage
+        self.personal_coverage[y_coords, x_coords] = True
 
     def detect_collision(self, new_pos):
         """Check collisions with walls and other robot agents."""
@@ -219,8 +375,34 @@ class DeploymentAgent(Agent):
     def __init__(self, model):
         Agent.__init__(self, model)
         self.unique_id = get_next_agent_id()
+        # Store a global coverage map that represents the combined knowledge of all robots
+        # that have communicated with the deployment agent
+        self.global_coverage = None
+        # Track which robots have reported back
+        self.robots_reported = set()
+        # Store all casualty locations reported by robots
+        self.reported_casualties = set()
+
+    def initialize_coverage_map(self, shape):
+        """Initialize the global coverage map once grid dimensions are known"""
+        if self.global_coverage is None:
+            self.global_coverage = np.zeros(shape, dtype=bool)
+    
+    def update_from_robot(self, robot):
+        """Update global knowledge from a robot's report"""
+        # Add robot to reported list
+        self.robots_reported.add(robot.unique_id)
+        
+        # Update global coverage map with robot's personal coverage
+        if robot.personal_coverage is not None and self.global_coverage is not None:
+            self.global_coverage = np.logical_or(self.global_coverage, robot.personal_coverage)
+        
+        # Update casualty reports
+        self.reported_casualties.update(robot.reported_casualties)
+        
+        return True
 
     def step(self):
         # Deployment agent does not move or contribute to coverage.
-        # It can communicate with robot agents if needed.
+        # Communication happens when robots initiate it.
         pass 
