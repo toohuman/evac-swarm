@@ -55,6 +55,7 @@ class SwarmExplorerModel(Model):
         seed=None,
         use_seed=False,
         simulator: ABMSimulator = None,
+        comm_timeout=15,
     ):
         reset_agent_id_counter()
 
@@ -162,7 +163,7 @@ class SwarmExplorerModel(Model):
                 self,  # model
                 vision_range=self.vision_range,
                 move_behaviour=self.move_behaviour,
-                comm_timeout=15  # Default timeout - can be adjusted
+                comm_timeout=comm_timeout  # Use the parameter value
             )
             # Initialize personal coverage grid for the robot
             robot.personal_coverage = np.zeros((self.space.num_cells_y, self.space.num_cells_x), dtype=bool)

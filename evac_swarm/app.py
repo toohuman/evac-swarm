@@ -67,15 +67,50 @@ def post_process_space(ax, model):
         #   -1 (wall) -> black, 0 (not visited) -> black, 1 (visited) -> white.
         cmap = ListedColormap(['black', '#111111', 'white'])
         norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5], cmap.N)
-        ax.imshow(
-            model.coverage_grid,
-            extent=[0, model.width, 0, model.height],
-            origin="lower",
-            cmap=cmap,
-            norm=norm,
-            alpha=1.0,
-            zorder=0
-        )
+        
+        # Display deployment agent's coverage knowledge if available
+        deployment_agent = model.get_deployment_agent()
+        if deployment_agent and deployment_agent.global_coverage is not None:
+            # Create a combined visualization:
+            # - Walls shown in black
+            # - Unexplored areas in dark gray
+            # - Areas known to deployment in blue
+            # - Actual covered areas in white
+            
+            # Create a visualization grid
+            vis_grid = np.zeros_like(model.coverage_grid)
+            # Mark walls
+            vis_grid[model.coverage_grid == -1] = -1
+            # Mark areas known to deployment in light blue (value 2)
+            non_wall_mask = (model.coverage_grid != -1)
+            vis_grid[non_wall_mask & deployment_agent.global_coverage] = 2
+            # Mark actually covered areas (value 1)
+            vis_grid[model.coverage_grid == 1] = 1
+            
+            # Custom colormap for the visualization
+            deployment_cmap = ListedColormap(['black', '#111111', '#add8e6', 'white'])
+            deployment_norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], deployment_cmap.N)
+            
+            ax.imshow(
+                vis_grid,
+                extent=[0, model.width, 0, model.height],
+                origin="lower",
+                cmap=deployment_cmap,
+                norm=deployment_norm,
+                alpha=1.0,
+                zorder=0
+            )
+        else:
+            # Fall back to original visualization if deployment agent not ready
+            ax.imshow(
+                model.coverage_grid,
+                extent=[0, model.width, 0, model.height],
+                origin="lower",
+                cmap=cmap,
+                norm=norm,
+                alpha=1.0,
+                zorder=0
+            )
     
     # Draw walls as rectangles using the latest wall specifications:
     for wall_spec in model.space.wall_specs:
@@ -119,6 +154,18 @@ def post_process_space(ax, model):
 def post_process_coverage(ax):
     """Post-process the coverage chart to set the y-axis fixed between 0 and 100."""
     ax.set_ylim(0, 100)
+    
+    # Get all lines in the plot
+    lines = ax.get_lines()
+    if len(lines) >= 2:
+        # First line is the actual coverage (keep original color)
+        # Second line is the deployment coverage - make it dashed and a different color
+        lines[1].set_linestyle('--')
+        lines[1].set_color('#1f77b4')  # Use the deployment agent color
+        
+    # Add a legend to differentiate the lines
+    ax.legend(['Actual Coverage', 'Known Coverage'])
+    ax.set_title('Exploration Coverage')
 
 # Model parameters with explicit value extraction
 model_params = {
@@ -143,6 +190,7 @@ model_params = {
         "value": True,
         "label": "Show Vision Range",
     },
+    "comm_timeout": Slider("Communication Timeout", 15, 5, 50, step=5),
     "width": {
         'type': "InputText",
         'value': 40,
