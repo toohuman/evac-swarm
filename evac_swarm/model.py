@@ -166,7 +166,7 @@ class SwarmExplorerModel(Model):
                 comm_timeout=comm_timeout  # Use the parameter value
             )
             # Initialize personal coverage grid for the robot
-            robot.personal_coverage = np.zeros((self.space.num_cells_y, self.space.num_cells_x), dtype=bool)
+            robot.coverage = np.zeros((self.space.num_cells_y, self.space.num_cells_x), dtype=bool)
             
             self.register_agent(robot)
             self.space.place_agent(robot, self.entry_point)  # Continuous coordinates

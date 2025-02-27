@@ -63,10 +63,6 @@ def post_process_space(ax, model):
     """
     # Display the coverage grid as a semi-transparent overlay, behind other layers.
     if hasattr(model, "coverage_grid"):
-        # Create a custom colormap that maps:
-        #   -1 (wall) -> black, 0 (not visited) -> black, 1 (visited) -> white.
-        cmap = ListedColormap(['black', '#111111', 'white'])
-        norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5], cmap.N)
         
         # Display deployment agent's coverage knowledge if available
         deployment_agent = model.get_deployment_agent()
@@ -87,16 +83,16 @@ def post_process_space(ax, model):
             # Mark actually covered areas (value 1)
             vis_grid[model.coverage_grid == 1] = 1
             
-            # Custom colormap for the visualization
-            deployment_cmap = ListedColormap(['black', '#111111', '#add8e6', 'white'])
-            deployment_norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], deployment_cmap.N)
+            # Custom colormap for the visualisation
+            cmap = ListedColormap(['black', '#111111', '#add8e6', 'white'])
+            norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], cmap.N)
             
             ax.imshow(
                 vis_grid,
                 extent=[0, model.width, 0, model.height],
                 origin="lower",
-                cmap=deployment_cmap,
-                norm=deployment_norm,
+                cmap=cmap,
+                norm=norm,
                 alpha=1.0,
                 zorder=0
             )
