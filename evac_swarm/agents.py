@@ -48,18 +48,39 @@ class RobotAgent(Agent):
         self.personal_coverage = None  # Will be initialized in the model
         self.last_comm_partner = None  # Keep track of last agent communicated with
 
-    def attempt_move(self, distance):
+    def _attempt_move(self, distance):
         """Move the robot forward by a specified distance if no collision occurs."""
         rad = math.radians(self.orientation)
         new_x = self.pos[0] + distance * math.cos(rad)
         new_y = self.pos[1] + distance * math.sin(rad)
         new_pos = (new_x, new_y)
 
+        # Check for collision
         if not self.detect_collision_fast(new_pos):
+            # No collision, proceed with move
             self.model.space.move_agent(self, new_pos)
             self.pos = new_pos
+            return True
+        else:
+            # Collision detected - try to adjust course
+            self._adjust_course_for_collision()
+            return False
+            
+    def _adjust_course_for_collision(self):
+        """
+        When a collision is detected, adjust the orientation to find a path around obstacles.
+        Uses the _limit_turn function for realistic movement.
+        """
+        # Try different direction changes, respecting turn speed limits
+        # First try right (+45 degrees)
+        desired_angle = (self.orientation + 45) % 360
+        self.orientation = self._limit_turn(desired_angle)
+        
+        # Add a small random perturbation to avoid getting stuck in loops
+        random_adjustment = self.model.random.uniform(-15, 15)
+        self.orientation = (self.orientation + random_adjustment) % 360
 
-    def limit_turn(self, desired_angle):
+    def _limit_turn(self, desired_angle):
         """
         Limit the change in angle from current_angle to desired_angle to at most max_change degrees.
         Angles are in degrees.
@@ -73,7 +94,7 @@ class RobotAgent(Agent):
         # Return the updated orientation.
         return (self.orientation + diff) % 360
 
-    def disperse(self, neighbour_radius=3.0):
+    def _disperse(self, neighbour_radius=3.0):
         """
         Adjust the agent's orientation to move away from nearby robots.
 
@@ -103,11 +124,14 @@ class RobotAgent(Agent):
             # Limit the angle change to self.turn_speed (or another maximum)
             self.orientation = self.limit_turn(desired_angle)
             # Attempt to move with the new orientation at self.move_speed
-            self.attempt_move(self.move_speed)
+            movement_success = self._attempt_move(self.move_speed)
+            # Try again if collision
+            if not movement_success:
+                self._attempt_move(self.move_speed)
         else:
-            self.random_exploration()
+            self._random_exploration()
 
-    def random_exploration(self):
+    def _random_exploration(self):
         """
         Execute a random (Brownian motion style) exploration.
         """
@@ -116,7 +140,11 @@ class RobotAgent(Agent):
         self.orientation = (self.orientation + delta_angle) % 360
 
         # Attempt to move forward by self.move_speed if there is no collision.
-        self.attempt_move(self.move_speed)
+        movement_success = self._attempt_move(self.move_speed)
+        
+        # If we hit a wall and adjusted course, try moving again with new orientation
+        if not movement_success:
+            self._attempt_move(self.move_speed)
 
     def find_communication_partner(self):
         """Find a nearby agent to communicate with, prioritizing other robots"""
@@ -220,11 +248,18 @@ class RobotAgent(Agent):
         if np.linalg.norm(vector_to_deployment) > 1.0:
             # Set orientation toward deployment
             desired_angle = np.degrees(np.arctan2(vector_to_deployment[1], vector_to_deployment[0]))
-            self.orientation = self.limit_turn(desired_angle)
-            self.attempt_move(self.move_speed)
+            self.orientation = self._limit_turn(desired_angle)
+            
+            # Try to move toward deployment, with collision avoidance
+            movement_success = self._attempt_move(self.move_speed)
+            
+            # If we couldn't move (hit a wall), we've already adjusted course in _attempt_move
+            if not movement_success:
+                # Try moving with the new orientation that was set in _adjust_course_for_collision
+                self._attempt_move(self.move_speed)
         else:
             # If close to deployment but no communication, random movement
-            self.random_exploration()
+            self._random_exploration()
             
         return False
     
@@ -244,15 +279,15 @@ class RobotAgent(Agent):
         else:
             # Normal exploration behavior
             if self.move_behaviour == "disperse":
-                self.disperse()
+                self._disperse()
             else:
-                self.random_exploration()
+                self._random_exploration()
         
         # After moving, update coverage and detect casualties
-        self.update_personal_coverage()
-        self.detect_casualties()
+        self._update_personal_coverage()
+        self._detect_casualties()
         
-    def update_personal_coverage(self):
+    def _update_personal_coverage(self):
         """Update the agent's personal coverage map based on current position"""
         if self.personal_coverage is None:
             # Initialize personal coverage grid if not already done
@@ -332,7 +367,7 @@ class RobotAgent(Agent):
         distance = math.hypot(px - closest_x, py - closest_y)
         return distance < radius
 
-    def detect_casualties(self):
+    def _detect_casualties(self):
         """Detect casualty agents within vision range and update the report."""
         for agent in self.model.agents:
             if type(agent).__name__ == "CasualtyAgent":
