@@ -56,7 +56,7 @@ class RobotAgent(Agent):
         new_pos = (new_x, new_y)
 
         # Check for collision
-        if not self.detect_collision_fast(new_pos):
+        if not self._detect_collision_fast(new_pos):
             # No collision, proceed with move
             self.model.space.move_agent(self, new_pos)
             self.pos = new_pos
@@ -72,14 +72,10 @@ class RobotAgent(Agent):
         Uses the _limit_turn function for realistic movement.
         """
         # Try different direction changes, respecting turn speed limits
-        # First try right (+45 degrees)
-        desired_angle = (self.orientation + 45) % 360
-        self.orientation = self._limit_turn(desired_angle)
-        
         # Add a small random perturbation to avoid getting stuck in loops
         random_adjustment = self.model.random.uniform(-15, 15)
-        self.orientation = (self.orientation + random_adjustment) % 360
-
+        self.orientation = self._limit_turn((self.orientation + random_adjustment) % 360)
+        
     def _limit_turn(self, desired_angle):
         """
         Limit the change in angle from current_angle to desired_angle to at most max_change degrees.
@@ -146,9 +142,18 @@ class RobotAgent(Agent):
         if not movement_success:
             self._attempt_move(self.move_speed)
 
-    def find_communication_partner(self):
-        """Find a nearby agent to communicate with, prioritizing other robots"""
-        nearby_agents = self.model.space.get_neighbors(self.pos, self.comm_range, include_center=False)
+    def _find_communication_partner(self):
+        """Find a nearby agent to communicate with, prioritising other robots"""
+        # Filter for only robot and deployment agents
+        communicable_agents = [agent for agent in self.model.agents 
+                             if isinstance(agent, (RobotAgent, DeploymentAgent))]
+        
+        # Get nearby agents, passing in our filtered list
+        nearby_agents, _ = self.model.space.get_agents_in_radius(
+            agent=self, 
+            radius=self.comm_range,
+            agent_filter=communicable_agents
+        )
         
         # First check for other robots
         for agent in nearby_agents:
@@ -226,14 +231,15 @@ class RobotAgent(Agent):
             # Reset communication timer
             self.steps_since_comm = 0
             self.last_comm_partner = partner.unique_id
+
             return True
             
         return False
     
-    def seek_communication(self):
+    def _seek_communication(self):
         """Behavior to seek out communication with other agents"""
         # Find potential communication partners
-        partner = self.find_communication_partner()
+        partner = self._find_communication_partner()
         
         if partner:
             # If partner found, communicate and don't move this step
@@ -243,31 +249,7 @@ class RobotAgent(Agent):
         # No partner in range, continue with random exploration
         self._random_exploration()
         return False
-    
-    def step(self):
-        # Increment step counter since last communication
-        self.steps_since_comm += 1
-        
-        # Decide on behavior based on communication needs
-        if self.steps_since_comm >= self.comm_timeout:
-            # Need to communicate - prioritize finding a partner
-            communicated = self.seek_communication()
-            if communicated:
-                # Skip further movement this step if communication happened
-                pass
-            # If seeking communication but didn't find a partner, movement
-            # is already handled by seek_communication()
-        else:
-            # Normal exploration behavior
-            if self.move_behaviour == "disperse":
-                self._disperse()
-            else:
-                self._random_exploration()
-        
-        # After moving, update coverage and detect casualties
-        self._update_coverage()
-        self._detect_casualties()
-        
+
     def _update_coverage(self):
         """Update the agent's personal coverage map based on current position"""
         if self.coverage is None:
@@ -291,25 +273,7 @@ class RobotAgent(Agent):
         # Mark visible areas in personal coverage
         self.coverage[y_coords, x_coords] = True
 
-    def detect_collision(self, new_pos):
-        """Check collisions with walls and other robot agents."""
-        # Check for wall collisions
-        for agent in self.model.agents:
-            if isinstance(agent, WallAgent):
-                if self.collides_with_wall(new_pos, self.radius, agent.wall_spec):
-                    return True
-                # elif type(agent).__name__ == "RobotAgent" and agent.unique_id != self.unique_id:
-                #     if euclidean_distance(new_pos, agent.pos) < (self.radius * 2):
-                #         return True
-
-        # Check if the new position is out of bounds
-        x, y = new_pos
-        if x < 0 or x > self.model.width or y < 0 or y > self.model.height:
-            return True
-
-        return False
-
-    def detect_collision_fast(self, new_pos):
+    def _detect_collision_fast(self, new_pos):
         """Check collisions with walls using the model's spatial index for accelerated lookup.
         Returns True if a collision is detected, False otherwise.
         """
@@ -335,6 +299,8 @@ class RobotAgent(Agent):
         and a rectangular wall defined by wall_spec.
         Returns True if the distance from new_pos to the wall is less than radius.
         """
+        # TODO: Implement collision detection using the R-tree spatial index in model.distance_map.
+        
         px, py = new_pos
         wx, wy = wall_spec['x'], wall_spec['y']
         half_w = wall_spec['width'] / 2
@@ -356,6 +322,26 @@ class RobotAgent(Agent):
                     # Report casualty by adding its position
                     self.reported_casualties.add(agent.pos)
                     agent.discovered = True
+
+    def step(self):
+        # Increment step counter since last communication
+        self.steps_since_comm += 1
+        
+        # Decide on behavior based on communication needs
+        if self.steps_since_comm >= self.comm_timeout:
+            # Need to communicate - prioritize finding a partner
+            communicated = self._seek_communication()
+
+        # Normal exploration behavior
+        if self.move_behaviour == "disperse":
+            self._disperse()
+        else:
+            self._random_exploration()
+        
+        # After moving, update coverage and detect casualties
+        self._update_coverage()
+        self._detect_casualties()
+
 
 class WallAgent(Agent):
     """

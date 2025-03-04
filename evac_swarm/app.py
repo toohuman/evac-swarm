@@ -77,14 +77,14 @@ def post_process_space(ax, model):
             vis_grid = np.zeros_like(model.coverage_grid)
             # Mark walls
             vis_grid[model.coverage_grid == -1] = -1
-            # Mark areas known to deployment in light blue (value 2)
-            non_wall_mask = (model.coverage_grid != -1)
-            vis_grid[non_wall_mask & deployment_agent.global_coverage] = 2
             # Mark actually covered areas (value 1)
             vis_grid[model.coverage_grid == 1] = 1
+            # Mark areas known to deployment in white (value 2)
+            non_wall_mask = (model.coverage_grid != -1)
+            vis_grid[non_wall_mask & deployment_agent.global_coverage] = 2
             
             # Custom colormap for the visualisation
-            cmap = ListedColormap(['black', '#111111', '#add8e6', 'white'])
+            cmap = ListedColormap(['black', '#111111', '#c0eec0', 'white'])
             norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], cmap.N)
             
             ax.imshow(

@@ -97,8 +97,9 @@ class SwarmExplorerModel(Model):
         
         # Initialize both grids consistently as (rows, cols) or (y, x)
         self.coverage_grid = np.zeros((num_cells_y, num_cells_x), dtype=np.int8)  # [y, x] (0 = not covered, 1 = covered, -1 = wall)
-        self.space = HybridSpace(self.width, self.height, 
-                               dims=(num_cells_y, num_cells_x), torus=False)  # Pass as (y, x)
+        self.space = HybridSpace(self,
+                                 self.width, self.height, 
+                                 dims=(num_cells_y, num_cells_x), torus=False)  # Pass as (y, x)
         
         # Generate building layout with new seed
         wall_layout = generate_building_layout(
