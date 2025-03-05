@@ -118,12 +118,9 @@ class RobotAgent(Agent):
         if np.linalg.norm(repulsion) > 0:
             desired_angle = np.degrees(np.arctan2(repulsion[1], repulsion[0]))
             # Limit the angle change to self.turn_speed (or another maximum)
-            self.orientation = self.limit_turn(desired_angle)
+            self.orientation = self._limit_turn(desired_angle)
             # Attempt to move with the new orientation at self.move_speed
-            movement_success = self._attempt_move(self.move_speed)
-            # Try again if collision
-            if not movement_success:
-                self._attempt_move(self.move_speed)
+            self._attempt_move(self.move_speed)
         else:
             self._random_exploration()
 
@@ -136,11 +133,7 @@ class RobotAgent(Agent):
         self.orientation = (self.orientation + delta_angle) % 360
 
         # Attempt to move forward by self.move_speed if there is no collision.
-        movement_success = self._attempt_move(self.move_speed)
-        
-        # If we hit a wall and adjusted course, try moving again with new orientation
-        if not movement_success:
-            self._attempt_move(self.move_speed)
+        self._attempt_move(self.move_speed)
 
     def _find_communication_partner(self):
         """Find a nearby agent to communicate with, prioritising other robots"""
