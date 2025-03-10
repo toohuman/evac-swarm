@@ -7,11 +7,15 @@ from mesa.experimental.cell_space import PropertyLayer
 from mesa.experimental.devs import ABMSimulator
 from scipy.ndimage import binary_dilation, distance_transform_edt
 from rtree import index
+import math
+from typing import List, Tuple, Set, Dict, Optional
+import time
 
 from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent, DeploymentAgent
-from evac_swarm.agents import reset_agent_id_counter
 from evac_swarm.building_generator import generate_building_layout
 from evac_swarm.space import HybridSpace
+from evac_swarm.communication import CommunicationManager, CoverageMessage, CasualtyMessage
+from evac_swarm.communication import handle_coverage_message, handle_casualty_message
 
 # Delete if left unused
 def bresenham(x0, y0, x1, y1):
@@ -57,8 +61,6 @@ class SwarmExplorerModel(Model):
         simulator: ABMSimulator = None,
         comm_timeout=15,
     ):
-        reset_agent_id_counter()
-
         if type(seed) == dict:
             seed = seed['value']
         if not use_seed:
@@ -198,6 +200,13 @@ class SwarmExplorerModel(Model):
         # self.visibility_matrix = self._precompute_visibility_matrix(vision_grid_range)
 
         self.running = True
+
+        # Initialize the communication manager
+        self.communication_manager = CommunicationManager(self)
+        
+        # Register message handlers
+        self.communication_manager.register_handler(CoverageMessage, handle_coverage_message)
+        self.communication_manager.register_handler(CasualtyMessage, handle_casualty_message)
 
     def _point_in_wall(self, point, wall_spec):
         """Check whether a point is inside a wall rectangle defined by wall_spec."""
