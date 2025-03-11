@@ -142,12 +142,33 @@ class CommunicationManager:
         if not messages:
             return []
             
-        # Get agents within range (using existing space functionality)
-        nearby_agents, _ = self.model.space.get_agents_in_radius(
-            agent=sender,
-            radius=comm_range
-        )
-        
+        # Check if sender has a position
+        if not hasattr(sender, 'pos') or sender.pos is None:
+            return []
+            
+        # Filter for only communicable agents (exclude walls and other non-communicable agents)
+        from evac_swarm.agents import RobotAgent, DeploymentAgent
+        communicable_agents = [
+            agent for agent in self.model.agents 
+            if isinstance(agent, (RobotAgent, DeploymentAgent))
+        ]
+            
+        # Get agents within range, passing our filtered list
+        try:
+            nearby_agents, _ = self.model.space.get_agents_in_radius(
+                agent=sender,
+                radius=comm_range,
+                agent_filter=communicable_agents
+            )
+        except Exception as e:
+            # If there's an error getting nearby agents, return empty list
+            print(f"Error getting nearby agents: {e}")
+            return []
+            
+        # If no nearby agents, return empty list
+        if not nearby_agents:
+            return []
+            
         # Filter for line of sight
         recipients = []
         for agent in nearby_agents:
@@ -155,16 +176,21 @@ class CommunicationManager:
                 continue
                 
             # Check line of sight using existing model functionality
-            sender_grid = self.model.space.continuous_to_grid(*sender.pos)
-            agent_grid = self.model.space.continuous_to_grid(*agent.pos)
-            
-            if self.model.is_visible_vectorised(
-                sender_grid, 
-                agent_grid,
-                self.model.space.wall_grid
-            ):
-                recipients.append(agent)
-                self.deliver_to_agent(agent, messages)
+            try:
+                sender_grid = self.model.space.continuous_to_grid(*sender.pos)
+                agent_grid = self.model.space.continuous_to_grid(*agent.pos)
+                
+                if self.model.is_visible_vectorised(
+                    sender_grid, 
+                    agent_grid,
+                    self.model.space.wall_grid
+                ):
+                    recipients.append(agent)
+                    self.deliver_to_agent(agent, messages)
+            except Exception as e:
+                # If there's an error checking line of sight, skip this agent
+                print(f"Error checking line of sight: {e}")
+                continue
                 
         return recipients
                 

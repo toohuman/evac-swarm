@@ -57,7 +57,7 @@ class RobotAgent(Agent):
         new_pos = (new_x, new_y)
 
         # Check for collision
-        if not self._detect_collision_fast(new_pos):
+        if not self._detect_collision(new_pos):
             # No collision, proceed with move
             self.model.space.move_agent(self, new_pos)
             self.pos = new_pos
@@ -91,29 +91,41 @@ class RobotAgent(Agent):
         # Return the updated orientation.
         return (self.orientation + diff) % 360
 
-    def _disperse(self, neighbour_radius=3.0):
+    def _disperse(self, neighbour_radius=None):
         """
         Adjust the agent's orientation to move away from nearby robots.
 
         Parameters:
             neighbour_radius: the distance within which neighbours affect the dispersion.
         """
-        # Get nearby robot agents (excluding itself)
-        neighbours = self.model.space.get_neighbors(self.pos, neighbour_radius, include_center=True)
-        if not neighbours:
+        if neighbour_radius is None:
+            neighbour_radius = self.vision_range
+
+        # Filter for only robot agents
+        robot_agents = [agent for agent in self.model.agents 
+                      if isinstance(agent, RobotAgent)]
+        
+        # Get nearby robot agents using get_agents_in_radius
+        try:
+            neighbours, _ = self.model.space.get_agents_in_radius(
+                agent=self,
+                radius=neighbour_radius,
+                agent_filter=robot_agents
+            )
+        except Exception as e:
+            print(f"Error finding neighbours for dispersion: {e}")
             return
 
         repulsion = np.array([0.0, 0.0])
         for nbr in neighbours:
-            if isinstance(nbr, RobotAgent) and nbr.unique_id != self.unique_id:
-                vector = np.array(self.pos) - np.array(nbr.pos)
-                # If the robots are extremely close (or in the same spot), apply a small random nudge:
-                if np.linalg.norm(vector) < 1e-5:
-                    vector = np.array([self.model.random.uniform(-0.1, 0.1),
-                                         self.model.random.uniform(-0.1, 0.1)])
-                # Weight by inverse-square distance to emphasise closer neighbours
-                distance = np.linalg.norm(vector) + 1e-6
-                repulsion += vector / (distance ** 2)
+            vector = np.array(self.pos) - np.array(nbr.pos)
+            # If the robots are extremely close (or in the same spot), apply a small random nudge:
+            if np.linalg.norm(vector) < 1e-5:
+                vector = np.array([self.model.random.uniform(-0.1, 0.1),
+                                        self.model.random.uniform(-0.1, 0.1)])
+            # Weight by inverse-square distance to emphasise closer neighbours
+            distance = np.linalg.norm(vector) + 1e-6
+            repulsion += vector / (distance ** 2)
 
         # If repulsion vector has magnitude, compute the desired angle.
         if np.linalg.norm(repulsion) > 0:
@@ -148,42 +160,42 @@ class RobotAgent(Agent):
                              if isinstance(agent, (RobotAgent, DeploymentAgent))]
         
         # Get nearby agents, passing in our filtered list
-        nearby_agents, _ = self.model.space.get_agents_in_radius(
-            agent=self, 
-            radius=self.comm_range,
-            agent_filter=communicable_agents
-        )
+        try:
+            nearby_agents, _ = self.model.space.get_agents_in_radius(
+                agent=self, 
+                radius=self.comm_range,
+                agent_filter=communicable_agents
+            )
+        except Exception as e:
+            print(f"Error finding communication partners: {e}")
+            return None
+            
+        if not nearby_agents:
+            return None
         
-        # First check for other robots
-        for agent in nearby_agents:
-            if isinstance(agent, RobotAgent) and agent.unique_id != self.unique_id:
+        # Generate random indices to check agents in random order
+        random_indices = self.model.random.sample(range(len(nearby_agents)), len(nearby_agents))
+        
+        # Check agents in random order
+        for idx in random_indices:
+            agent = nearby_agents[idx]
+            if agent.unique_id != self.unique_id:
                 # Check if there's line of sight to this agent
-                agent_pos = agent.pos
-                grid_agent_x, grid_agent_y = self.model.space.continuous_to_grid(*agent_pos)
-                grid_self_x, grid_self_y = self.model.space.continuous_to_grid(*self.pos)
-                
-                # Only proceed if we have line of sight
-                if self.model.is_visible_vectorised(
-                    (grid_self_x, grid_self_y),
-                    (grid_agent_x, grid_agent_y),
-                    self.model.space.wall_grid
-                ):
-                    return agent
-        
-        # If no robot is found, check for the deployment agent
-        for agent in nearby_agents:
-            if isinstance(agent, DeploymentAgent):
-                # Check line of sight to deployment agent
-                agent_pos = agent.pos
-                grid_agent_x, grid_agent_y = self.model.space.continuous_to_grid(*agent_pos)
-                grid_self_x, grid_self_y = self.model.space.continuous_to_grid(*self.pos)
-                
-                if self.model.is_visible_vectorised(
-                    (grid_self_x, grid_self_y),
-                    (grid_agent_x, grid_agent_y),
-                    self.model.space.wall_grid
-                ):
-                    return agent
+                try:
+                    agent_pos = agent.pos
+                    grid_agent_x, grid_agent_y = self.model.space.continuous_to_grid(*agent_pos)
+                    grid_self_x, grid_self_y = self.model.space.continuous_to_grid(*self.pos)
+                    
+                    # Only proceed if we have line of sight
+                    if self.model.is_visible_vectorised(
+                        (grid_self_x, grid_self_y),
+                        (grid_agent_x, grid_agent_y),
+                        self.model.space.wall_grid
+                    ):
+                        return agent
+                except Exception as e:
+                    print(f"Error checking line of sight to agent: {e}")
+                    continue
         
         return None
 
@@ -214,8 +226,20 @@ class RobotAgent(Agent):
     def send_messages(self):
         """
         Send all pending messages to nearby agents.
+        
+        Returns:
+            bool: True if messages were successfully sent, False otherwise
         """
-        if self.pending_messages:
+        if not self.pending_messages:
+            return False
+            
+        try:
+            # Filter for only communicable agents with valid positions
+            communicable_agents = [
+                agent for agent in self.model.agents 
+                if isinstance(agent, (RobotAgent, DeploymentAgent))
+            ]
+            
             recipients = self.model.communication_manager.deliver_messages(
                 sender=self,
                 messages=self.pending_messages,
@@ -230,11 +254,15 @@ class RobotAgent(Agent):
             self.pending_messages = []
             
             return bool(recipients)
-        return False
+        except Exception as e:
+            print(f"Error sending messages from robot agent: {e}")
+            # Clear pending messages to avoid repeated errors
+            self.pending_messages = []
+            return False
 
-    def communicate(self, partner):
+    def communicate(self, partner) -> None:
         """
-        Legacy communication method - now uses the message system.
+        Communicate with other agents via the message system.
         
         Args:
             partner: The agent to communicate with
@@ -248,15 +276,6 @@ class RobotAgent(Agent):
             self.model.communication_manager.deliver_to_agent(partner, self.pending_messages)
             self.pending_messages = []
             self.steps_since_comm = 0
-            
-            # If partner is a robot, have them communicate back
-            if isinstance(partner, RobotAgent):
-                partner.prepare_coverage_message()
-                partner.prepare_casualty_message()
-                if partner.pending_messages:
-                    self.model.communication_manager.deliver_to_agent(self, partner.pending_messages)
-                    partner.pending_messages = []
-                    partner.steps_since_comm = 0
 
     def _seek_communication(self):
         """
@@ -298,7 +317,7 @@ class RobotAgent(Agent):
         # Mark visible areas in personal coverage
         self.coverage[y_coords, x_coords] = True
 
-    def _detect_collision_fast(self, new_pos):
+    def _detect_collision(self, new_pos):
         """Check collisions with walls using the model's spatial index for accelerated lookup.
         Returns True if a collision is detected, False otherwise.
         """
@@ -365,18 +384,12 @@ class RobotAgent(Agent):
         if self.steps_since_comm >= self.comm_timeout:
             # Need to communicate - prioritize finding a partner
             communicated = self._seek_communication()
-            if not communicated:
-                # No communication partner found, continue exploration
-                if self.move_behaviour == "disperse":
-                    self._disperse()
-                else:
-                    self._random_exploration()
+            
+        # Regular exploration
+        if self.move_behaviour == "disperse":
+            self._disperse()
         else:
-            # Regular exploration
-            if self.move_behaviour == "disperse":
-                self._disperse()
-            else:
-                self._random_exploration()
+            self._random_exploration()
                 
         # Try to send any pending messages
         self.send_messages()
@@ -460,12 +473,25 @@ class DeploymentAgent(Agent):
         """
         Send all pending messages to nearby agents.
         """
-        if self.pending_messages:
+        if not self.pending_messages:
+            return
+            
+        try:
+            # Filter for only robot agents with valid positions
+            communicable_agents = [
+                agent for agent in self.model.agents 
+                if isinstance(agent, RobotAgent)
+            ]
+            
             self.model.communication_manager.deliver_messages(
                 sender=self,
                 messages=self.pending_messages,
                 comm_range=self.comm_range
             )
+            self.pending_messages = []
+        except Exception as e:
+            print(f"Error sending messages from deployment agent: {e}")
+            # Clear pending messages to avoid repeated errors
             self.pending_messages = []
 
     def step(self):
