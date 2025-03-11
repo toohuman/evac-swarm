@@ -23,10 +23,10 @@ from tqdm.auto import tqdm
 
 # Define the parameter sweep.
 params = {
-    "width": 40,
-    "height": 25,
-    "robot_count": [5, 10, 15, 20],
-    "casualty_count": 3,
+    "width": 80,
+    "height": 45,
+    "robot_count": [10, 20, 30, 40, 50],
+    "casualty_count": 5,
     "min_room_size": 6,
     "wall_thickness": 0.5,
     "vision_range": 3,
@@ -34,7 +34,7 @@ params = {
     # Add additional parameters here if needed.
 }
 
-def run_experiment(run_id, iteration, kwargs, max_steps=1000):
+def run_experiment(run_id, iteration, kwargs, max_steps=10000):
     """
     Run a single model instance until either max_steps
     are reached or the coverage reaches at least 100%.
@@ -54,8 +54,9 @@ def run_experiment(run_id, iteration, kwargs, max_steps=1000):
         model.step()
         # Update the progress bar for each step.
         pbar.update(1)
-        coverage = (np.sum(model.coverage_grid) / model.total_accessible_cells) * 100
-        if coverage >= 100:
+        # coverage = (np.sum(model.coverage_grid) / model.total_accessible_cells) * 100
+        deployment_coverage = model.get_deployment_coverage_percentage()
+        if deployment_coverage >= 100:
             break
     pbar.close()
     end_time = time.time()

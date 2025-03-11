@@ -6,7 +6,7 @@ from typing import List, Set, Tuple, Optional
 from evac_swarm.communication import Message, CoverageMessage, CasualtyMessage
 
 
-def euclidean_distance(a, b):
+def euclidean_distance(a: Tuple[float, float], b: Tuple[float, float]) -> float:
     """Calculate the Euclidean distance between two points."""
     return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
 
@@ -15,7 +15,8 @@ class RobotAgent(Agent):
     """
     A robot agent that can move in 360° directions, avoid collisions and detect casualties.
     """
-    def __init__(self, model, vision_range=2.0, radius=0.3, move_behaviour="random", comm_timeout=10):
+    def __init__(self, model, vision_range: float = 2.0, radius: float = 0.3, 
+                 move_behaviour: str = "random", comm_timeout: int = 10) -> None:
         """
         Initialize a robot agent.
         
@@ -43,13 +44,13 @@ class RobotAgent(Agent):
         self.pending_messages: List[Message] = []  # Messages waiting to be sent
         
         # A set to store aggregated casualty reports (e.g. positions)
-        self.reported_casualties = set()
+        self.reported_casualties: Set[Tuple[float, float]] = set()
         
         # Personal coverage map (will be synced during communication)
         self.coverage = None  # Will be initialized by the model
         self.last_comm_partner = None
 
-    def _attempt_move(self, distance):
+    def _attempt_move(self, distance: float) -> bool:
         """Move the robot forward by a specified distance if no collision occurs."""
         rad = math.radians(self.orientation)
         new_x = self.pos[0] + distance * math.cos(rad)
@@ -67,7 +68,7 @@ class RobotAgent(Agent):
             self._adjust_course_for_collision()
             return False
             
-    def _adjust_course_for_collision(self):
+    def _adjust_course_for_collision(self) -> None:
         """
         When a collision is detected, adjust the orientation to find a path around obstacles.
         Uses the _limit_turn function for realistic movement.
@@ -77,7 +78,7 @@ class RobotAgent(Agent):
         random_adjustment = self.model.random.uniform(-15, 15)
         self.orientation = self._limit_turn((self.orientation + random_adjustment) % 360)
         
-    def _limit_turn(self, desired_angle):
+    def _limit_turn(self, desired_angle: float) -> float:
         """
         Limit the change in angle from current_angle to desired_angle to at most max_change degrees.
         Angles are in degrees.
@@ -91,7 +92,7 @@ class RobotAgent(Agent):
         # Return the updated orientation.
         return (self.orientation + diff) % 360
 
-    def _disperse(self, neighbour_radius=None):
+    def _disperse(self, neighbour_radius: Optional[float] = None) -> None:
         """
         Adjust the agent's orientation to move away from nearby robots.
 
@@ -137,7 +138,7 @@ class RobotAgent(Agent):
         else:
             self._random_exploration()
 
-    def _random_exploration(self):
+    def _random_exploration(self) -> None:
         """
         Execute a random (Brownian motion style) exploration.
         """
@@ -148,7 +149,7 @@ class RobotAgent(Agent):
         # Attempt to move forward by self.move_speed if there is no collision.
         self._attempt_move(self.move_speed)
 
-    def _find_communication_partner(self):
+    def _find_communication_partner(self) -> Optional[Agent]:
         """
         Find a suitable communication partner within range.
         
@@ -199,7 +200,7 @@ class RobotAgent(Agent):
         
         return None
 
-    def prepare_coverage_message(self):
+    def prepare_coverage_message(self) -> None:
         """
         Prepare a message containing this robot's coverage data.
         """
@@ -211,7 +212,7 @@ class RobotAgent(Agent):
             )
             self.pending_messages.append(message)
 
-    def prepare_casualty_message(self):
+    def prepare_casualty_message(self) -> None:
         """
         Prepare a message containing this robot's casualty reports.
         """
@@ -223,7 +224,7 @@ class RobotAgent(Agent):
             )
             self.pending_messages.append(message)
 
-    def send_messages(self):
+    def send_messages(self) -> bool:
         """
         Send all pending messages to nearby agents.
         
@@ -260,7 +261,7 @@ class RobotAgent(Agent):
             self.pending_messages = []
             return False
 
-    def communicate(self, partner) -> None:
+    def communicate(self, partner: Agent) -> None:
         """
         Communicate with other agents via the message system.
         
@@ -277,7 +278,7 @@ class RobotAgent(Agent):
             self.pending_messages = []
             self.steps_since_comm = 0
 
-    def _seek_communication(self):
+    def _seek_communication(self) -> bool:
         """
         Actively seek a communication partner.
         
@@ -294,7 +295,7 @@ class RobotAgent(Agent):
             
         return False
 
-    def _update_coverage(self):
+    def _update_coverage(self) -> None:
         """Update the agent's personal coverage map based on current position"""
         if self.coverage is None:
             # Initialize personal coverage grid if not already done
@@ -317,7 +318,7 @@ class RobotAgent(Agent):
         # Mark visible areas in personal coverage
         self.coverage[y_coords, x_coords] = True
 
-    def _detect_collision(self, new_pos):
+    def _detect_collision(self, new_pos: Tuple[float, float]) -> bool:
         """Check collisions with walls using the model's spatial index for accelerated lookup.
         Returns True if a collision is detected, False otherwise.
         """
@@ -337,7 +338,7 @@ class RobotAgent(Agent):
         return False
 
     @staticmethod
-    def collides_with_wall(new_pos, radius, wall_spec):
+    def collides_with_wall(new_pos: Tuple[float, float], radius: float, wall_spec: dict) -> bool:
         """
         Collision detection for a circular agent (with radius)
         and a rectangular wall defined by wall_spec.
@@ -358,7 +359,7 @@ class RobotAgent(Agent):
         distance = math.hypot(px - closest_x, py - closest_y)
         return distance < radius
 
-    def _detect_casualties(self):
+    def _detect_casualties(self) -> None:
         """Detect casualty agents within vision range and update the report."""
         for agent in self.model.agents:
             if type(agent).__name__ == "CasualtyAgent":
@@ -367,7 +368,7 @@ class RobotAgent(Agent):
                     self.reported_casualties.add(agent.pos)
                     agent.discovered = True
 
-    def step(self):
+    def step(self) -> None:
         """
         Execute one step of the agent's behavior.
         """
@@ -400,11 +401,11 @@ class WallAgent(Agent):
     A wall agent that represents a physical barrier in the environment.
     """
 
-    def __init__(self, model, wall_spec):
+    def __init__(self, model, wall_spec: dict) -> None:
         super().__init__(model)
         self.wall_spec = wall_spec
 
-    def step(self):
+    def step(self) -> None:
         # Walls are static so no behaviour on step.
         pass
 
@@ -414,11 +415,11 @@ class CasualtyAgent(Agent):
     A casualty agent that represents a person in need of rescue.
     """
 
-    def __init__(self, model):
+    def __init__(self, model) -> None:
         super().__init__(model)
         self.discovered = False
 
-    def step(self):
+    def step(self) -> None:
         # Casualties do not move.
         pass
 
@@ -427,7 +428,7 @@ class DeploymentAgent(Agent):
     Represents the deployment point for robots. Acts as a communication hub.
     """
 
-    def __init__(self, model):
+    def __init__(self, model) -> None:
         """
         Initialize a deployment agent.
         
@@ -436,16 +437,16 @@ class DeploymentAgent(Agent):
         """
         super().__init__(model)
         self.global_coverage = None  # Will be initialized later
-        self.reported_casualties = set()  # Set of casualty positions
-        self.robots_reported = set()  # Set of robot IDs that have reported
+        self.reported_casualties: Set[Tuple[float, float]] = set()  # Set of casualty positions
+        self.robots_reported: Set[int] = set()  # Set of robot IDs that have reported
         self.pending_messages: List[Message] = []  # Messages waiting to be sent
         self.comm_range = 10.0  # Larger communication range than robots
 
-    def initialize_coverage_map(self, shape):
+    def initialize_coverage_map(self, shape: Tuple[int, int]) -> None:
         """Initialize the global coverage map with the given shape"""
         self.global_coverage = np.zeros(shape, dtype=bool)
 
-    def prepare_coverage_message(self):
+    def prepare_coverage_message(self) -> None:
         """
         Prepare a message containing the global coverage data.
         """
@@ -457,7 +458,7 @@ class DeploymentAgent(Agent):
             )
             self.pending_messages.append(message)
 
-    def prepare_casualty_message(self):
+    def prepare_casualty_message(self) -> None:
         """
         Prepare a message containing all reported casualties.
         """
@@ -469,7 +470,7 @@ class DeploymentAgent(Agent):
             )
             self.pending_messages.append(message)
 
-    def send_messages(self):
+    def send_messages(self) -> None:
         """
         Send all pending messages to nearby agents.
         """
@@ -494,7 +495,7 @@ class DeploymentAgent(Agent):
             # Clear pending messages to avoid repeated errors
             self.pending_messages = []
 
-    def step(self):
+    def step(self) -> None:
         """
         Execute one step of the deployment agent's behavior.
         """

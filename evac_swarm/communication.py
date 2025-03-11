@@ -1,13 +1,16 @@
 import time
 import numpy as np
-from typing import List, Set, Dict, Any, Callable, Tuple, Type, Optional, Union
+from typing import List, Set, Dict, Any, Callable, Tuple, Type, Optional, Union, TYPE_CHECKING
 from mesa import Agent
+
+if TYPE_CHECKING:
+    from evac_swarm.model import SwarmExplorerModel
 
 
 class Message:
     """Base class for all communication messages between agents"""
     
-    def __init__(self, sender_id: int, timestamp: float = None):
+    def __init__(self, sender_id: int, timestamp: float = None) -> None:
         """
         Initialize a new message.
         
@@ -25,7 +28,7 @@ class Message:
 class CoverageMessage(Message):
     """Message containing coverage map information"""
     
-    def __init__(self, sender_id: int, coverage_data: np.ndarray):
+    def __init__(self, sender_id: int, coverage_data: np.ndarray) -> None:
         """
         Initialize a coverage update message.
         
@@ -44,7 +47,7 @@ class CoverageMessage(Message):
 class CasualtyMessage(Message):
     """Message containing casualty information"""
     
-    def __init__(self, sender_id: int, casualty_positions: Set[Tuple[float, float]]):
+    def __init__(self, sender_id: int, casualty_positions: Set[Tuple[float, float]]) -> None:
         """
         Initialize a casualty report message.
         
@@ -62,7 +65,7 @@ class CasualtyMessage(Message):
 class RoleProposalMessage(Message):
     """Message proposing role changes to other agents"""
     
-    def __init__(self, sender_id: int, proposed_role: str, reason: str = None):
+    def __init__(self, sender_id: int, proposed_role: str, reason: str = None) -> None:
         """
         Initialize a role proposal message.
         
@@ -83,7 +86,7 @@ class RoleProposalMessage(Message):
 class CommunicationManager:
     """Manages message passing between agents in the simulation"""
     
-    def __init__(self, model):
+    def __init__(self, model: 'SwarmExplorerModel') -> None:
         """
         Initialize the communication manager.
         
@@ -93,7 +96,7 @@ class CommunicationManager:
         self.model = model
         self.message_handlers: Dict[Type[Message], Callable] = {}
         
-    def register_handler(self, message_type: Type[Message], handler_function: Callable[[Agent, Message], None]):
+    def register_handler(self, message_type: Type[Message], handler_function: Callable[[Agent, Message], None]) -> None:
         """
         Register a function to handle a specific message type.
         
@@ -227,7 +230,7 @@ class CommunicationManager:
 
 # Example handler functions that could be registered with the CommunicationManager
 
-def handle_coverage_message(agent, message: CoverageMessage) -> None:
+def handle_coverage_message(agent: Agent, message: CoverageMessage) -> None:
     """
     Handle a coverage message by updating the agent's coverage map.
     
@@ -251,7 +254,7 @@ def handle_coverage_message(agent, message: CoverageMessage) -> None:
         agent.robots_reported.add(message.sender_id)
 
 
-def handle_casualty_message(agent, message: CasualtyMessage) -> None:
+def handle_casualty_message(agent: Agent, message: CasualtyMessage) -> None:
     """
     Handle a casualty message by updating the agent's reported casualties.
     
@@ -270,7 +273,7 @@ def handle_casualty_message(agent, message: CasualtyMessage) -> None:
         agent.robots_reported.add(message.sender_id)
 
 
-def handle_role_proposal(agent, message: RoleProposalMessage) -> None:
+def handle_role_proposal(agent: Agent, message: RoleProposalMessage) -> None:
     """
     Handle a role proposal message.
     

@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from itertools import compress
+from typing import Tuple
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -11,7 +12,8 @@ from mesa.space import ContinuousSpace
 class HybridSpace(ContinuousSpace):
     """A hybrid space that combines continuous agent movement with a discrete grid for walls."""
     
-    def __init__(self, model, x_max, y_max, dims=(100, 100), torus=False, n_agents: int = 100):
+    def __init__(self, model, x_max: float, y_max: float, dims: Tuple[int, int] = (100, 100), 
+                 torus: bool = False, n_agents: int = 100) -> None:
         """
         Args:
             x_max, y_max: Continuous space dimensions
@@ -99,7 +101,7 @@ class HybridSpace(ContinuousSpace):
             
         return (agents, filtered_distances)
         
-    def add_wall(self, wall_spec):
+    def add_wall(self, wall_spec: dict) -> None:
         """Add a wall to both representations."""
         self.wall_specs.append(wall_spec)
         
@@ -115,19 +117,19 @@ class HybridSpace(ContinuousSpace):
         
         self.wall_grid[min_y:max_y, min_x:max_x] = True
         
-    def continuous_to_grid(self, x, y):
+    def continuous_to_grid(self, x: float, y: float) -> Tuple[int, int]:
         """Convert continuous coordinates to grid coordinates."""
         grid_x = int((x / self.x_max) * self.num_cells_x)
         grid_y = int((y / self.y_max) * self.num_cells_y)
         return grid_x, grid_y
     
-    def grid_to_continuous(self, grid_x, grid_y):
+    def grid_to_continuous(self, grid_x: int, grid_y: int) -> Tuple[float, float]:
         """Convert grid coordinates to continuous coordinates."""
         x = (grid_x / self.num_cells_x) * self.x_max
         y = (grid_y / self.num_cells_y) * self.y_max
         return x, y
     
-    def is_wall_at(self, x, y):
+    def is_wall_at(self, x: float, y: float) -> bool:
         """Check if there's a wall at the given continuous coordinates."""
         grid_x, grid_y = self.continuous_to_grid(x, y)
         try:

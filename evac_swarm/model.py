@@ -8,7 +8,7 @@ from mesa.experimental.devs import ABMSimulator
 from scipy.ndimage import binary_dilation, distance_transform_edt
 from rtree import index
 import math
-from typing import List, Tuple, Set, Dict, Optional
+from typing import List, Tuple, Set, Dict, Optional, Generator
 import time
 
 from evac_swarm.agents import RobotAgent, WallAgent, CasualtyAgent, DeploymentAgent
@@ -18,7 +18,7 @@ from evac_swarm.communication import CommunicationManager, CoverageMessage, Casu
 from evac_swarm.communication import handle_coverage_message, handle_casualty_message
 
 # Delete if left unused
-def bresenham(x0, y0, x1, y1):
+def bresenham(x0: int, y0: int, x1: int, y1: int) -> Generator[Tuple[int, int], None, None]:
     """
     Bresenham's Line Algorithm.
     Yields integer coordinates on the line from (x0, y0) to (x1, y1).
@@ -46,21 +46,21 @@ class SwarmExplorerModel(Model):
     """
     def __init__(
         self,
-        width=20,
-        height=20,
-        robot_count=10,
-        casualty_count=5,
-        min_room_size=11,
-        wall_thickness=0.3,
-        vision_range=3,
-        move_behaviour="random",
-        grid_size=100,
-        show_vision_range=True,
-        seed=None,
-        use_seed=False,
-        simulator: ABMSimulator = None,
-        comm_timeout=15,
-    ):
+        width: float = 20,
+        height: float = 20,
+        robot_count: int = 10,
+        casualty_count: int = 5,
+        min_room_size: int = 11,
+        wall_thickness: float = 0.3,
+        vision_range: float = 3,
+        move_behaviour: str = "random",
+        grid_size: int = 100,
+        show_vision_range: bool = True,
+        seed: Optional[int] = None,
+        use_seed: bool = False,
+        simulator: Optional[ABMSimulator] = None,
+        comm_timeout: int = 15,
+    ) -> None:
         if type(seed) == dict:
             seed = seed['value']
         if not use_seed:
@@ -208,7 +208,7 @@ class SwarmExplorerModel(Model):
         self.communication_manager.register_handler(CoverageMessage, handle_coverage_message)
         self.communication_manager.register_handler(CasualtyMessage, handle_casualty_message)
 
-    def _point_in_wall(self, point, wall_spec):
+    def _point_in_wall(self, point: Tuple[float, float], wall_spec: dict) -> bool:
         """Check whether a point is inside a wall rectangle defined by wall_spec."""
         x, y = point
         wx, wy = wall_spec['x'], wall_spec['y']
@@ -226,7 +226,7 @@ class SwarmExplorerModel(Model):
     #             return False
     #     return True
     
-    def _precompute_visibility_matrix(self, vision_grid_range):
+    def _precompute_visibility_matrix(self, vision_grid_range: int) -> Dict[Tuple[int, int], np.ndarray]:
         """
         Precomputes a visibility matrix for all grid cells.
         
@@ -282,7 +282,7 @@ class SwarmExplorerModel(Model):
         print(f"Visibility precomputation complete: {processed} cells processed")
         return visibility_matrix
     
-    def is_visible_vectorised(self, start, end, wall_grid):
+    def is_visible_vectorised(self, start: Tuple[int, int], end: Tuple[int, int], wall_grid: np.ndarray) -> bool:
         """
         Determines if the line from start to end is clear of walls.
         
@@ -314,14 +314,14 @@ class SwarmExplorerModel(Model):
         return not np.any(cells_along_line)
 
 
-    def get_deployment_agent(self):
+    def get_deployment_agent(self) -> Optional[DeploymentAgent]:
         """Get the deployment agent from the model"""
         for agent in self.agents:
             if isinstance(agent, DeploymentAgent):
                 return agent
         return None
     
-    def get_deployment_coverage_percentage(self):
+    def get_deployment_coverage_percentage(self) -> float:
         """Calculate the percentage of coverage known to the deployment agent"""
         deployment_agent = self.get_deployment_agent()
         if deployment_agent and deployment_agent.global_coverage is not None:
@@ -331,7 +331,7 @@ class SwarmExplorerModel(Model):
             return (covered_cells / self.total_accessible_cells) * 100
         return 0.0
     
-    def step(self):
+    def step(self) -> None:
         """Advance the model by one step using vectorized updates for robots."""
         for agent in self.agents:
             if isinstance(agent, RobotAgent):
